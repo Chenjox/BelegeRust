@@ -18,9 +18,9 @@ fn get_first_eigenvalue(matA: Matrix2x2, matB: Matrix2x2, start: Vector2) -> f64
       let rayleigh = z / n;
 
       let h_norm = 1.0 / n.sqrt() * h;
+      println!("{},{},{},{},{}",v_i[0], v_i[1], h_norm[0], h_norm[1], rayleigh);
       v_i = matA.try_inverse().unwrap() * h_norm;
 
-      println!("{},{},{},{},{}",v_i[0], v_i[1], h_norm[0], h_norm[1], rayleigh);
       if iter > MAX_ITER {
         break;
       }
