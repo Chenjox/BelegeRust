@@ -9,4 +9,5 @@
 [workspace]
 members = [
     "VonMises",
+    "LinOptimierung"
 ]

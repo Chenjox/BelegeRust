@@ -1,0 +1,93 @@
+use nalgebra::{Dynamic, OMatrix};
+
+type dynMatrix = OMatrix<f64, Dynamic, Dynamic>;
+
+pub struct Nebenbedingung {
+    pub zielwert: f64,
+    pub ungleichung: bool, // Stets gleich oder kleiner gleich
+    pub koeffizienten: Vec<f64>
+}
+
+pub struct LineareZielfunktion {
+    pub koeffizienten: Vec<f64>
+}
+
+pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Vec<f64> {
+    // Umformen der Nebenbedingungen
+    // First pass für die Anzahl der Ungleichungsnebenbedingungen und gleichungsbedingungen
+    let mut ungleich: u32 = 0;
+    let mut gleich: u32 = 0;
+    for elem in nb {
+        if elem.ungleichung {
+            ungleich += 1;
+        } else {
+            gleich += 1;
+        }
+    };
+    // ab hier ändern sich die Variablen nicht mehr
+    // let mut -> let
+    let unabhaengige = &zf.koeffizienten.len();
+    let ungleich = ungleich;
+    let gleich = gleich;
+    // Second pass für die Einführung von Schlupfvariablen
+    // Speichern der Indizes der gleichungs und ungleichungsnb in `nb` für nachfolgende Sortierung.
+    let mut gleich_indizes = vec![0; gleich.try_into().unwrap()];
+    let mut ungleich_indizes = vec![0; ungleich.try_into().unwrap()];
+    let mut gleich_index = 0;
+    let mut ungleich_index = 0;
+    for index in 0..nb.len() {
+        if nb[index].ungleichung {
+            ungleich_indizes[ungleich_index] = index;
+            ungleich_index += 1;
+        } else {
+            gleich_indizes[ungleich_index] = index;
+            gleich_index += 1;
+        }
+    };
+    // Kontrolle gleich_index = gleich
+    // Kontrolle ungleich_index = ungleich
+
+    // Umsortieren.
+    let mut nb_koeffizienten = dynMatrix::zeros( (gleich + ungleich -1) as usize, unabhaengige);
+    for i in 0..nb.len() {
+        for j in 0..unabhaengige {
+           if i < gleich {
+              nb_koeffizienten[i][j] = nb[gleich_index[i]].koeffizienten[j];
+           } else {
+              nb_koeffizienten[i][j] = nb[ungleich_index[i-gleich]].koeffizienten[j];
+           }
+        }
+    }
+    // NB Koeffizienten stehen alle Koeffizienten der NB drin
+    // zuerst Koeffizienten von Gleichungsnebenbedinungen 
+    // dann Koeffizienten von Ungleichungsnebenbedinungen
+
+    // Ab hier TODO
+    // Wie viele Schlupfvariablen gibt es? für jede ungleichungsnebenbedingung eine!
+    // + anzahl der koeffizienten der Zielfunktion + Zielfunktionswert 
+    // anzahl der Spalten des Tablaux 
+    let n_vars = ungleich + &zf.koeffizienten.len() + 1;
+    // Bau der Matrix:
+    // Erste Zeile ist Zielfunktion
+    // danach n Gleichungsbedinungen 
+    // danach m ungleichungsnebenbedingungen mit Schlupf
+    // = n + m + 1 Zeilen
+    let n_zeilen = ungleich + gleich + 1;
+    let mut tablaux = dynMatrix::zeros( n_zeilen, n_vars );
+
+    // Einsortieren der Werte
+    // Erste Zeile ist die Zielfunktion
+    for j in 0..(unabhaengige) {
+        tablaux[0][j] = &zf.koeffizienten[j];
+    }
+    // Jetzt die gleichungs und ungleichsnebenbedinungen
+    for i in 1..n_zeilen {
+        for j in 0..(unabhaengige) {
+            tablaux[i][j] = &nb[i].koeffizienten[j];
+        }
+    }
+
+    
+    // Aufstellen der Matrix
+    return Vec::new();
+}
