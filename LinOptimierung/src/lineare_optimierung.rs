@@ -40,7 +40,7 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
             ungleich_indizes[ungleich_index] = index;
             ungleich_index += 1;
         } else {
-            gleich_indizes[ungleich_index] = index;
+            gleich_indizes[gleich_index] = index;
             gleich_index += 1;
         }
     };
@@ -86,16 +86,49 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     for i in 0..(n_zeilen-1) {
         for j in 0..(unabhaengige) {
             // da die erste Zeile die Zielfunktion ist, muss der index i verschoben werden.
-            tablaux[(i+1,j)] = nb[i].koeffizienten[j];
+            tablaux[(i+1,j)] = nb_koeffizienten[(i,j)];
         }
         // zielwert in die letzte spalte
         tablaux[(i+1,n_vars-1)] = nb[i].zielwert;
         // 
-        tablaux[(i+1,unabhaengige+i)] = nb[i].zielwert;
-        println!("{}",tablaux);
+        //tablaux[(i+1,unabhaengige+i)] = nb[i].zielwert;
     }
+    for i in 0..(ungleich) {
+        tablaux[(1+gleich+i,unabhaengige+i)] = 1.0;
+    }
+    println!("{}",tablaux);
 
+    /// JETZT beginnt der Simplex Algorithmus ///
+
+    'simplex: loop {
+        // Auswählen der Pivotspalte
+        // Größter Koeffizient der ZF ist Pivotspalte
+        let mut pivotcol = 0;
+        let mut max = 0.0;
+        for i in 0..unabhaengige {
+            let current = tablaux[(0,i)];
+            if current > max {
+                max = current;
+                pivotcol = i;
+            } 
+        }
+        // TODO Überprüfen der Positivität des Maximums
+
+        // Bestimmen der Pivotzeile
+        let mut pivotrow = 1;
+        let mut min = f64::INFINITY; // init mit "+unendlich"
+        for i in 1..n_zeilen {
+            let quotient = tablaux[(i,n_vars-1)]/tablaux[(i,pivotcol)];
+            println!("{}",quotient);
+            if quotient > 0.0 && quotient < min {
+                pivotrow = i;
+                min = quotient;
+            }
+        }
+        println!("{},{}",pivotcol, pivotrow);
+
+        break 'simplex;
+    }
     
-    // Aufstellen der Matrix
     return Vec::new();
 }
