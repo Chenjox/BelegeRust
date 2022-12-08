@@ -4,7 +4,7 @@ type dynMatrix = OMatrix<f64, Dynamic, Dynamic>;
 
 pub struct Nebenbedingung {
     pub zielwert: f64,
-    pub ungleichung: bool, // Stets gleich oder kleiner gleich
+    pub ungleichung: bool, // Stets gleich oder kleiner gleich dem zielwert
     pub koeffizienten: Vec<f64>
 }
 
@@ -15,8 +15,8 @@ pub struct LineareZielfunktion {
 pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Vec<f64> {
     // Umformen der Nebenbedingungen
     // First pass für die Anzahl der Ungleichungsnebenbedingungen und gleichungsbedingungen
-    let mut ungleich: u32 = 0;
-    let mut gleich: u32 = 0;
+    let mut ungleich: usize = 0;
+    let mut gleich: usize = 0;
     for elem in nb {
         if elem.ungleichung {
             ungleich += 1;
@@ -26,7 +26,7 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     };
     // ab hier ändern sich die Variablen nicht mehr
     // let mut -> let
-    let unabhaengige = &zf.koeffizienten.len();
+    let unabhaengige = zf.koeffizienten.len();
     let ungleich = ungleich;
     let gleich = gleich;
     // Second pass für die Einführung von Schlupfvariablen
@@ -48,16 +48,17 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     // Kontrolle ungleich_index = ungleich
 
     // Umsortieren.
-    let mut nb_koeffizienten = dynMatrix::zeros( (gleich + ungleich -1) as usize, unabhaengige);
+    let mut nb_koeffizienten = dynMatrix::zeros( (gleich + ungleich) as usize, unabhaengige);
     for i in 0..nb.len() {
         for j in 0..unabhaengige {
            if i < gleich {
-              nb_koeffizienten[i][j] = nb[gleich_index[i]].koeffizienten[j];
+              nb_koeffizienten[(i,j)] = nb[gleich_indizes[i]].koeffizienten[j];
            } else {
-              nb_koeffizienten[i][j] = nb[ungleich_index[i-gleich]].koeffizienten[j];
+              nb_koeffizienten[(i,j)] = nb[ungleich_indizes[i-gleich]].koeffizienten[j];
            }
         }
     }
+    println!("{}",nb_koeffizienten);
     // NB Koeffizienten stehen alle Koeffizienten der NB drin
     // zuerst Koeffizienten von Gleichungsnebenbedinungen 
     // dann Koeffizienten von Ungleichungsnebenbedinungen
@@ -78,13 +79,20 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     // Einsortieren der Werte
     // Erste Zeile ist die Zielfunktion
     for j in 0..(unabhaengige) {
-        tablaux[0][j] = &zf.koeffizienten[j];
+        tablaux[(0,j)] = zf.koeffizienten[j];
     }
     // Jetzt die gleichungs und ungleichsnebenbedinungen
-    for i in 1..n_zeilen {
+    
+    for i in 0..(n_zeilen-1) {
         for j in 0..(unabhaengige) {
-            tablaux[i][j] = &nb[i].koeffizienten[j];
+            // da die erste Zeile die Zielfunktion ist, muss der index i verschoben werden.
+            tablaux[(i+1,j)] = nb[i].koeffizienten[j];
         }
+        // zielwert in die letzte spalte
+        tablaux[(i+1,n_vars-1)] = nb[i].zielwert;
+        // 
+        tablaux[(i+1,unabhaengige+i)] = nb[i].zielwert;
+        println!("{}",tablaux);
     }
 
     
