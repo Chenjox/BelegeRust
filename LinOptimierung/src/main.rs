@@ -10,18 +10,18 @@ fn main() {
         Nebenbedingung {
             zielwert: 1.0,
             ungleichung: true,
-            koeffizienten: vec![-1.0, 2.0, 1.0,-1.0]
+            koeffizienten: vec![-1.0, 2.0, 1.0, -1.0],
         },
         Nebenbedingung {
             zielwert: 1.0,
             ungleichung: true,
-            koeffizienten: vec![1.0, 4.0, 0.0,-2.0]
+            koeffizienten: vec![1.0, 4.0, 0.0, -2.0],
         },
         Nebenbedingung {
             zielwert: 1.0,
             ungleichung: true,
-            koeffizienten: vec![1.0, -1.0, 0.0,1.0]
-        }
+            koeffizienten: vec![1.0, -1.0, 0.0, 1.0],
+        },
     ];
 
     linear_optimize(&zf, &nbs);
