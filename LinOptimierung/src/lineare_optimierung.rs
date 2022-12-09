@@ -98,7 +98,7 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     }
     println!("{}", tablaux);
 
-    /// JETZT beginnt der Simplex Algorithmus ///
+    // JETZT beginnt der Simplex Algorithmus //
     'simplex: loop {
         // Auswählen der Pivotspalte
         // Größter Koeffizient der ZF ist Pivotspalte
