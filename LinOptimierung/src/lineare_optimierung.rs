@@ -47,14 +47,16 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     // Kontrolle gleich_index = gleich
     // Kontrolle ungleich_index = ungleich
 
-    // Umsortieren.
-    let mut nb_koeffizienten = dynMatrix::zeros((gleich + ungleich) as usize, unabhaengige);
+    // Umsortieren. in der Letzten Spalte steht die VZ RHS
+    let mut nb_koeffizienten = dynMatrix::zeros((gleich + ungleich) as usize, unabhaengige + 1);
     for i in 0..nb.len() {
         for j in 0..unabhaengige {
             if i < gleich {
                 nb_koeffizienten[(i, j)] = nb[gleich_indizes[i]].koeffizienten[j];
+                nb_koeffizienten[(i, unabhaengige)] = nb[gleich_indizes[i]].zielwert;
             } else {
                 nb_koeffizienten[(i, j)] = nb[ungleich_indizes[i - gleich]].koeffizienten[j];
+                nb_koeffizienten[(i, unabhaengige)] = nb[ungleich_indizes[i]].zielwert;
             }
         }
     }
@@ -84,17 +86,17 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     // Jetzt die gleichungs und ungleichsnebenbedinungen
 
     for i in 0..(n_zeilen - 1) {
+        // zielwert in die letzte spalte
+        let sign = nb_koeffizienten[(i,unabhaengige)].signum();
+        tablaux[(i + 1, n_vars - 1)] = sign*nb_koeffizienten[(i,unabhaengige)];
         for j in 0..(unabhaengige) {
             // da die erste Zeile die Zielfunktion ist, muss der index i verschoben werden.
-            tablaux[(i + 1, j)] = nb_koeffizienten[(i, j)];
+            tablaux[(i + 1, j)] = sign*nb_koeffizienten[(i, j)];
         }
-        // zielwert in die letzte spalte
-        tablaux[(i + 1, n_vars - 1)] = nb[i].zielwert;
-        //
-        //tablaux[(i+1,unabhaengige+i)] = nb[i].zielwert;
     }
     for i in 0..(ungleich) {
-        tablaux[(1 + gleich + i, unabhaengige + i)] = 1.0;
+        let sign = nb_koeffizienten[(i,unabhaengige)].signum();
+        tablaux[(1 + gleich + i, unabhaengige + i)] = 1.0*sign;
     }
     println!("{}", tablaux);
 
@@ -118,14 +120,21 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
         let mut min = f64::INFINITY; // init mit "+unendlich"
         for i in 1..n_zeilen {
             let quotient = tablaux[(i, n_vars - 1)] / tablaux[(i, pivotcol)];
-            println!("{}", quotient);
             if quotient > 0.0 && quotient < min {
                 pivotrow = i;
                 min = quotient;
             }
         }
-        println!("{},{}", pivotcol, pivotrow);
+        let pivot_val = tablaux[(pivotrow,pivotcol)];
+        
+        println!("[{},{}] = {}",  pivotrow,pivotcol, pivot_val);
+        println!("{}",tablaux);
+        // Bestimmen der neuen Ergebnisse
+        //for i in 1..n_zeilen {
+        //    
+        //}
 
+        println!("{}",tablaux);
         break 'simplex;
     }
 
