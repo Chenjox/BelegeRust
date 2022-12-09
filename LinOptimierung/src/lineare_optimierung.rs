@@ -64,7 +64,6 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     // zuerst Koeffizienten von Gleichungsnebenbedinungen
     // dann Koeffizienten von Ungleichungsnebenbedinungen
 
-    // Ab hier TODO
     // Wie viele Schlupfvariablen gibt es? für jede ungleichungsnebenbedingung eine!
     // + anzahl der koeffizienten der Zielfunktion + Zielfunktionswert
     // anzahl der Spalten des Tablaux
@@ -130,7 +129,6 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
             }
         }
         let pivot_val = tablaux[(pivotrow, pivotcol)];
-        println!("{}",pivot_val);
         // Bestimmen der neuen Ergebnisse
         // Normierung der Pivotzeile
         for j in 0..(n_vars) {
@@ -138,10 +136,7 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
         }
         // RHS
         for i in 1..n_zeilen {
-            if i == pivotrow {
-                continue;
-                //tablaux[(i, n_vars - 1)] = tablaux[(pivotrow, n_vars - 1)];
-            } else {
+            if i != pivotrow {
                 tablaux[(i, n_vars - 1)] = tablaux[(i, n_vars - 1)]
                     - tablaux[(i, pivotcol)] * tablaux[(pivotrow, n_vars - 1)];
             }
