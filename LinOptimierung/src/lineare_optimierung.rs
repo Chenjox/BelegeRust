@@ -60,7 +60,6 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
             }
         }
     }
-    println!("{}", nb_koeffizienten);
     // NB Koeffizienten stehen alle Koeffizienten der NB drin
     // zuerst Koeffizienten von Gleichungsnebenbedinungen
     // dann Koeffizienten von Ungleichungsnebenbedinungen
@@ -87,56 +86,84 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
 
     for i in 0..(n_zeilen - 1) {
         // zielwert in die letzte spalte
-        let sign = nb_koeffizienten[(i,unabhaengige)].signum();
-        tablaux[(i + 1, n_vars - 1)] = sign*nb_koeffizienten[(i,unabhaengige)];
+        let sign = nb_koeffizienten[(i, unabhaengige)].signum();
+        tablaux[(i + 1, n_vars - 1)] = sign * nb_koeffizienten[(i, unabhaengige)];
         for j in 0..(unabhaengige) {
             // da die erste Zeile die Zielfunktion ist, muss der index i verschoben werden.
-            tablaux[(i + 1, j)] = sign*nb_koeffizienten[(i, j)];
+            tablaux[(i + 1, j)] = sign * nb_koeffizienten[(i, j)];
         }
     }
     for i in 0..(ungleich) {
-        let sign = nb_koeffizienten[(i,unabhaengige)].signum();
-        tablaux[(1 + gleich + i, unabhaengige + i)] = 1.0*sign;
+        let sign = nb_koeffizienten[(i, unabhaengige)].signum();
+        tablaux[(1 + gleich + i, unabhaengige + i)] = 1.0 * sign;
     }
-    println!("{}", tablaux);
-
+    let MAX_ITER = 1000;
+    let mut iter = 0;
     // JETZT beginnt der Simplex Algorithmus //
     'simplex: loop {
+        iter += 1;
+        println!("{}", tablaux);
         // Auswählen der Pivotspalte
         // Größter Koeffizient der ZF ist Pivotspalte
         let mut pivotcol = 0;
         let mut max = 0.0;
-        for i in 0..unabhaengige {
+        for i in 0..n_vars-1 {
             let current = tablaux[(0, i)];
             if current > max {
                 max = current;
                 pivotcol = i;
             }
         }
-        // TODO Überprüfen der Positivität des Maximums
+        // Überprüfen der Positivität des Maximums
+        if max <= 0.0 || iter > MAX_ITER {
+            break 'simplex;
+        }
 
         // Bestimmen der Pivotzeile
         let mut pivotrow = 1;
         let mut min = f64::INFINITY; // init mit "+unendlich"
         for i in 1..n_zeilen {
             let quotient = tablaux[(i, n_vars - 1)] / tablaux[(i, pivotcol)];
-            if quotient > 0.0 && quotient < min {
+            if quotient >= 0.0 && quotient < min {
                 pivotrow = i;
                 min = quotient;
             }
         }
-        let pivot_val = tablaux[(pivotrow,pivotcol)];
-        
-        println!("[{},{}] = {}",  pivotrow,pivotcol, pivot_val);
-        println!("{}",tablaux);
+        let pivot_val = tablaux[(pivotrow, pivotcol)];
+        println!("{}",pivot_val);
         // Bestimmen der neuen Ergebnisse
-        //for i in 1..n_zeilen {
-        //    
-        //}
-
-        println!("{}",tablaux);
-        break 'simplex;
+        // Normierung der Pivotzeile
+        for j in 0..(n_vars) {
+            tablaux[(pivotrow, j)] = tablaux[(pivotrow, j)] / pivot_val;
+        }
+        // RHS
+        for i in 1..n_zeilen {
+            if i == pivotrow {
+                continue;
+                //tablaux[(i, n_vars - 1)] = tablaux[(pivotrow, n_vars - 1)];
+            } else {
+                tablaux[(i, n_vars - 1)] = tablaux[(i, n_vars - 1)]
+                    - tablaux[(i, pivotcol)] * tablaux[(pivotrow, n_vars - 1)];
+            }
+        }
+        // Alle Element außer der Pivotzeilen + Spalten
+        for i in 0..n_zeilen {
+            for j in 0..n_vars-1 {
+                if i != pivotrow && j != pivotcol {
+                    tablaux[(i,j)] = tablaux[(i,j)] - tablaux[(i,pivotcol)]*tablaux[(pivotrow,j)];
+                }
+            }
+        }
+        //Zielfunktionsergebnis
+        tablaux[(0,n_vars-1)] = tablaux[(0,n_vars-1)] - tablaux[(0,pivotcol)]*tablaux[(pivotrow,n_vars-1)];
+        // Alle Pivotspaltenelemente außer Pivotelement selbst
+        for i in 0..n_zeilen {
+            if i != pivotrow {
+                tablaux[(i,pivotcol)] = 0.0;
+            }
+        }
     }
+    println!("{}", tablaux);
 
     return Vec::new();
 }
