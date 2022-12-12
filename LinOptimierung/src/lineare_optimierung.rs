@@ -98,6 +98,7 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     }
     let MAX_ITER = 1000;
     let mut iter = 0;
+    let mut erg_indizes = vec![usize::MAX; ungleich + &zf.koeffizienten.len()];
     // JETZT beginnt der Simplex Algorithmus //
     'simplex: loop {
         iter += 1;
@@ -129,6 +130,8 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
             }
         }
         let pivot_val = tablaux[(pivotrow, pivotcol)];
+
+        erg_indizes[pivotcol] = pivotrow;
         // Bestimmen der neuen Ergebnisse
         // Normierung der Pivotzeile
         for j in 0..(n_vars) {
@@ -158,7 +161,17 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
             }
         }
     }
-    println!("{}", tablaux);
+    //println!("{}", tablaux);
+    //println!("{:?}", erg_indizes);
 
-    return Vec::new();
+    let mut res = Vec::new();
+    for i in 0..zf.koeffizienten.len() {
+        if erg_indizes[i] != usize::MAX {
+          res.push( tablaux[(erg_indizes[i],n_vars-1)] );
+        } else {
+          res.push(0.0);
+        }
+    }
+
+    return res;
 }

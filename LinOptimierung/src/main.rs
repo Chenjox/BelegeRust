@@ -4,7 +4,7 @@ use crate::lineare_optimierung::*;
 
 fn belegaufgabe() {
     let zf = LineareZielfunktion {
-        koeffizienten: vec![2.0, -2.0, -1.0, -1.0],
+        koeffizienten: vec![-2.0, 2.0, 1.0, 1.0],
     };
     let nbs = vec![
         Nebenbedingung {
@@ -18,17 +18,17 @@ fn belegaufgabe() {
             koeffizienten: vec![1.0, 4.0, 0.0, -2.0],
         },
         Nebenbedingung {
-            zielwert: 1.0,
+            zielwert: 4.0,
             ungleichung: true,
             koeffizienten: vec![1.0, -1.0, 0.0, 1.0],
         },
     ];
 
-    linear_optimize(&zf, &nbs);
-    println!("Hello World");
+    let erg = linear_optimize(&zf, &nbs);
+    println!("{:?}",erg);
 }
 
-fn main() {
+fn uebungsvariable() {
     let zf = LineareZielfunktion {
         koeffizienten: vec![2.0, 3.0],
     };
@@ -50,5 +50,10 @@ fn main() {
         },
     ];
 
-    linear_optimize(&zf, &nbs);
+    let erg = linear_optimize(&zf, &nbs);
+    println!("{:?}",erg);
+}
+
+fn main() {
+    belegaufgabe();
 }
