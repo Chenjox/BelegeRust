@@ -9,5 +9,6 @@
 [workspace]
 members = [
     "VonMises",
-    "LinOptimierung"
+    "LinOptimierung",
+    "Traglast"
 ]
