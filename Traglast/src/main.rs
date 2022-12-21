@@ -20,6 +20,33 @@ struct Beam {
 #[derive(Debug)]
 struct Triangle(usize, usize, usize);
 
+#[derive(Debug)]
+struct RigidBody {
+    points: Vec<usize>,
+}
+
+impl RigidBody {
+    fn is_joined_with(&self, other: &RigidBody) -> bool {
+        let mut count = 0;
+        for i in &self.points {
+            if other.points.contains(i) {
+                count = count + 1;
+            }
+        }
+        return count >= 2;
+    }
+
+    fn join_with(&self, other: RigidBody) -> RigidBody {
+        let mut n_p = self.points.clone();
+        for i in other.points {
+            if !n_p.contains(&i) {
+                n_p.push(i);
+            }
+        }
+        return RigidBody { points: n_p };
+    }
+}
+
 impl Triangle {
     fn is_the_same(&self, other: &Triangle) -> bool {
         let s_elem = [self.0, self.1, self.2];
@@ -56,6 +83,26 @@ impl Triangle {
             }
         }
         return count == 2;
+    }
+    fn contains_beam(&self, other: &Beam) -> bool {
+        let s_elem = [self.0, self.1, self.2];
+        let o_elem = [other.from, other.to];
+        let mut is_contained = [false, false];
+        // sind 2 elemente in der anderen enthalten?
+        for i in 0..2 {
+            let mut is_member = false;
+            for j in 0..3 {
+                is_member = s_elem[j] == o_elem[i] || is_member;
+            }
+            is_contained[i] = is_member;
+        }
+        return is_contained[0] && is_contained[1];
+    }
+
+    fn to_rigid_body(&self) -> RigidBody {
+        return RigidBody {
+            points: vec![self.0, self.1, self.2],
+        };
     }
 }
 
@@ -152,6 +199,95 @@ fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
     return (v, kant);
 }
 
+fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>) -> Vec<RigidBody> {
+    let vsort = sortPoints(v);
+    let adj = get_adjacency_matrix(v, &vsort, kant);
+
+    let adjSquare = &adj * &adj;
+
+    //println!("{},{}", adj, adjSquare);
+
+    let mut triangle_list: Vec<Triangle> = Vec::new();
+
+    for i in 0..v.len() {
+        for j in i + 1..v.len() {
+            if adj[(i, j)] > 0 && adjSquare[(i, j)] > 0 {
+                // das finden der dritten Node des Dreiecks
+                for k in i + 1..v.len() {
+                    if adj[(i, k)] > 0 && adj[(k, j)] > 0 {
+                        let tri = Triangle(vsort[i], vsort[j], vsort[k]);
+                        // aber wir könnten es bereits gefunden haben!
+                        let mut already_found = false;
+                        for t in 0..triangle_list.len() {
+                            already_found = already_found || triangle_list[t].is_the_same(&tri);
+                        }
+                        if !already_found {
+                            //println!("Triangle found: {:?}", tri);
+                            triangle_list.push(tri);
+                        }
+                        //else {
+                        //    println!("Triangle already found: {:?}", tri);
+                        //}
+                    }
+                }
+            }
+        }
+    }
+    // Jetzt alle in den Dreiecken enthaltenen Kanten filtern,
+    let mut kant_not = Vec::new();
+    for i in 0..kant.len() {
+        let mut is_in_triangle = false;
+        for t in &triangle_list {
+            is_in_triangle = is_in_triangle || t.contains_beam(&kant[i]);
+        }
+        if !is_in_triangle {
+            kant_not.push(i);
+        }
+    }
+    //println!("{:?}", kant_not);
+    // Abschließend alle Dreiecke zu Starrkörpern zusammenfügen.
+    let mut rigid: Vec<RigidBody> = triangle_list
+        .iter()
+        .map(|tri| tri.to_rigid_body())
+        .collect();
+    // Alle Rigid Bodys die zusammengehören, zusammenbasteln
+    // Achtung: hier kann die Erdscheibe hinzugefügt werden
+    loop {
+        let mut has_changed = false;
+        // alle Rigidbodys zusammenführen
+        if let Some(bod) = rigid.pop() {
+            // nehme den letzten RigidBody!
+            for i in 0..rigid.len() {
+                if let Some(bod2) = rigid.pop() {
+                    // nehme den zweitletzten
+                    if bod.is_joined_with(&bod2) {
+                        rigid.insert(0, bod.join_with(bod2));
+                        has_changed = true;
+                        break;
+                    } else {
+                        rigid.insert(0, bod2);
+                    }
+                }
+            }
+            if !has_changed {
+                rigid.insert(0, bod);
+            }
+        }
+        if !has_changed {
+            break;
+        }
+    }
+    // Und einzelne Kanten zu Rigidbodys hinzufügen
+    for i in kant_not {
+        let from = kant[i].from;
+        let to = kant[i].to;
+        rigid.push(RigidBody {
+            points: vec![from, to],
+        })
+    }
+    return rigid;
+}
+
 // Eine optimierte indizierung
 fn sortPoints(pvec: &Vec<Point>) -> Vec<usize> {
     let mut sortVec = vec![0; pvec.len()];
@@ -203,46 +339,9 @@ fn get_adjacency_matrix(pvec: &Vec<Point>, sortVec: &Vec<usize>, bvec: &Vec<Beam
 fn main() {
     let (v, kant) = get_tragwerk();
 
-    let vsort = sortPoints(&v);
+    let rigid = get_rigid_bodies(&v, &kant);
+    println!("{:?}", rigid);
 
-    println!("{:?}", v);
-    println!("{:?}", vsort);
-    println!("{:?}", kant);
-
-    {
-        let adj = get_adjacency_matrix(&v, &vsort, &kant);
-
-        let adjSquare = &adj * &adj;
-
-        println!("{},{}", adj, adjSquare);
-
-        let mut triangle_list: Vec<Triangle> = Vec::new();
-
-        for i in 0..v.len() {
-            for j in i + 1..v.len() {
-                if adj[(i, j)] > 0 && adjSquare[(i, j)] > 0 {
-                    // das finden der dritten Node des Dreiecks
-                    for k in i + 1..v.len() {
-                        if adj[(i, k)] > 0 && adj[(k, j)] > 0 {
-                            let tri = Triangle(vsort[i], vsort[j], vsort[k]);
-                            // aber wir könnten es bereits gefunden haben!
-                            let mut already_found = false;
-                            for t in 0..triangle_list.len() {
-                                already_found = already_found || triangle_list[t].is_the_same(&tri);
-                            }
-                            if !already_found {
-                                //println!("Triangle found: {:?}", tri);
-                                triangle_list.push(tri);
-                            }
-                            //else {
-                            //    println!("Triangle already found: {:?}", tri);
-                            //}
-                        }
-                    }
-                }
-            }
-        }
-    }
     {
         let res_y = 200;
         let res_x = 300;
