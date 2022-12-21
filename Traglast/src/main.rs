@@ -1,5 +1,6 @@
 use nalgebra::{Dynamic, OMatrix};
 use plotters::prelude::*;
+use std::fmt;
 
 type DAdjUsize = OMatrix<usize, Dynamic, Dynamic>;
 
@@ -10,6 +11,35 @@ struct Point {
     x: f64,
     y: f64,
 }
+
+#[derive(Clone, PartialEq, Debug)]
+struct Pol {
+    is_at_infinity: bool,
+    x: f64,
+    y: f64,
+}
+
+impl fmt::Display for Pol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {}, {})", self.is_at_infinity, self.x, self.y)
+    }
+}
+
+impl Pol {
+    fn new(infty: bool, x: f64, y: f64) -> Self {
+        Pol {
+            is_at_infinity: infty,
+            x,
+            y,
+        }
+    }
+    fn exists(&self) -> bool {
+        return !self.x.is_nan() && !self.y.is_nan();
+    }
+}
+
+type DCoordMat = OMatrix<Pol, Dynamic, Dynamic>;
+
 #[derive(Debug)]
 struct Beam {
     from: usize,
@@ -20,9 +50,29 @@ struct Beam {
 #[derive(Debug)]
 struct Triangle(usize, usize, usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct RigidBody {
     points: Vec<usize>,
+}
+
+struct Mapping {
+    map: Vec<usize>,
+}
+
+impl Mapping {
+    // 0 -> 1
+    fn map_to(&self, index: usize) -> usize {
+        return self.map[index];
+    }
+    //
+    fn map_from(&self, index: usize) -> usize {
+        for i in 0..self.map.len() {
+            if index == self.map[i] {
+                return i;
+            }
+        }
+        return usize::MAX;
+    }
 }
 
 impl RigidBody {
@@ -44,6 +94,10 @@ impl RigidBody {
             }
         }
         return RigidBody { points: n_p };
+    }
+
+    fn contains_point(&self, pointnum: usize) -> bool {
+        return self.points.contains(&pointnum);
     }
 }
 
@@ -196,12 +250,30 @@ fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
         nplast: 1.0,
     });
 
+    kant.swap_remove(3);
+    kant.swap_remove(5);
+    kant.swap_remove(7);
+    kant.swap_remove(9);
+
     return (v, kant);
 }
 
-fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>) -> Vec<RigidBody> {
+fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) -> Vec<RigidBody> {
     let vsort = sortPoints(v);
-    let adj = get_adjacency_matrix(v, &vsort, kant);
+    let mapping = Mapping { map: vsort.clone() };
+    let mut adj = get_adjacency_matrix(v, &vsort, kant);
+    {
+        //Einarbeiten der Erdscheibe
+        for i in 0..erdscheibe.points.len() {
+            for j in i + 1..erdscheibe.points.len() {
+                let to = mapping.map_from(erdscheibe.points[i]);
+                let from = mapping.map_from(erdscheibe.points[j]);
+                adj[(to, from)] = 1;
+                adj[(from, to)] = 1;
+            }
+        }
+    }
+    let adj = adj;
 
     let adjSquare = &adj * &adj;
 
@@ -251,8 +323,10 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>) -> Vec<RigidBody> {
         .map(|tri| tri.to_rigid_body())
         .collect();
     // Alle Rigid Bodys die zusammengehören, zusammenbasteln
-    // Achtung: hier kann die Erdscheibe hinzugefügt werden
+    let mut iter = 0;
+    let max_iter = rigid.len() * (rigid.len() + 1) / 2;
     loop {
+        iter = iter + 1;
         let mut has_changed = false;
         // alle Rigidbodys zusammenführen
         if let Some(bod) = rigid.pop() {
@@ -263,7 +337,6 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>) -> Vec<RigidBody> {
                     if bod.is_joined_with(&bod2) {
                         rigid.insert(0, bod.join_with(bod2));
                         has_changed = true;
-                        break;
                     } else {
                         rigid.insert(0, bod2);
                     }
@@ -273,7 +346,7 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>) -> Vec<RigidBody> {
                 rigid.insert(0, bod);
             }
         }
-        if !has_changed {
+        if !has_changed || iter > max_iter {
             break;
         }
     }
@@ -286,6 +359,25 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>) -> Vec<RigidBody> {
         })
     }
     return rigid;
+}
+
+fn get_rigid_body_connectivity(
+    points: &Vec<Point>,
+    bodies: &Vec<RigidBody>,
+) -> Vec<(usize, Vec<usize>)> {
+    let mut res = Vec::new();
+    for i in 0..points.len() {
+        let mut bod_res = Vec::new();
+        for j in 0..bodies.len() {
+            if bodies[j].contains_point(points[i].num) {
+                bod_res.push(j);
+            }
+        }
+        if bod_res.len() > 1 {
+            res.push((i, bod_res));
+        }
+    }
+    return res;
 }
 
 // Eine optimierte indizierung
@@ -336,11 +428,96 @@ fn get_adjacency_matrix(pvec: &Vec<Point>, sortVec: &Vec<usize>, bvec: &Vec<Beam
     return adj_mat;
 }
 
+// Aufstellen des Polplans
+fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) {
+    let mapping = Mapping {
+        map: sortPoints(&points),
+    };
+    let mut rigid = bodies.clone();
+    let end = rigid.len() - 1;
+    // finden der Erdscheibe,
+    let mut erd = 0;
+    'erdloop: for r_body_index in 0..rigid.len() {
+        let r_body = &rigid[r_body_index];
+        for i in &r_body.points {
+            for j in &erdscheibe.points {
+                if i == j {
+                    erd = r_body_index;
+                    break 'erdloop;
+                }
+            }
+        }
+        //rigid.push(erdscheibe.clone());
+        // tauschen der Erdscheibe ans ende
+    }
+    rigid.swap(erd, end);
+
+    // Im Unendlichen?, x, y, größe Abzüglich der erdscheibe
+    let mut mat = DCoordMat::from_element(
+        bodies.len() - 1,
+        bodies.len() - 1,
+        Pol::new(false, f64::NAN, f64::NAN),
+    );
+    {
+        let connect_points = get_rigid_body_connectivity(points, &rigid);
+        // Mittels der Erdscheibe werden die offenkundigen Hauptpole bestimmt!
+        let erd = end;
+        for i in 0..connect_points.len() {
+            let con_bodies = &connect_points[i].1;
+            // First pass, ist die Erdscheibe enthalten?
+            let mut is_erde = false;
+            for j in 0..con_bodies.len() {
+                if con_bodies[j] == erd {
+                    is_erde = true;
+                }
+            }
+            if is_erde {
+                for j in 0..con_bodies.len() {
+                    if con_bodies[j] != erd {
+                        let po = &points[mapping.map_from(connect_points[i].0)];
+                        if !mat[(con_bodies[j], con_bodies[j])].exists() {
+                            mat[(con_bodies[j], con_bodies[j])] = Pol::new(false, po.x, po.y);
+                        } else {
+                            println!("Widerspruch im Polplan gefunden");
+                        }
+                    }
+                }
+            }
+        }
+        rigid.remove(end);
+        let rigid = rigid;
+        // Jetzt die Offenkundigen Nebenpole
+        let connect_points = get_rigid_body_connectivity(points, &rigid);
+        for i in 0..connect_points.len() {
+            let con_bodies = &connect_points[i].1;
+            let po = &points[mapping.map_from(connect_points[i].0)];
+            for j in 0..con_bodies.len() {
+                // mindestens 2 Elemente müssen enthalten sein
+                for k in j + 1..con_bodies.len() {
+                    mat[(con_bodies[j], con_bodies[k])] = Pol::new(false, po.x, po.y);
+                }
+            }
+        }
+        println!("{:?}", rigid);
+        println!("{:?}", connect_points);
+    }
+    println!("{}", mat);
+    // Jetzt beginnt die Iteration
+}
+
 fn main() {
     let (v, kant) = get_tragwerk();
+    let mapping = Mapping {
+        map: sortPoints(&v),
+    };
+    // Erdscheibe hinzufügen
+    let erd = RigidBody {
+        points: vec![15, 16, 17, 18],
+    };
 
-    let rigid = get_rigid_bodies(&v, &kant);
-    println!("{:?}", rigid);
+    let mut rigid = get_rigid_bodies(&v, &kant, &erd);
+
+    polplan(&v, &rigid, &erd);
 
     {
         let res_y = 200;
@@ -364,19 +541,19 @@ fn main() {
             let from = i.from;
             let to = i.to;
             let mut line_points = Vec::new();
-            for po in &v {
-                if po.num == from {
-                    line_points.push((
-                        po.x as i32 * 10 + margin as i32,
-                        (res_y as i32 - (po.y as i32 * 10 + margin)),
-                    ));
-                }
-                if po.num == to {
-                    line_points.push((
-                        po.x as i32 * 10 + margin as i32,
-                        (res_y as i32 - (po.y as i32 * 10 + margin)),
-                    ));
-                }
+            {
+                let po = &v[mapping.map_from(from)];
+                line_points.push((
+                    po.x as i32 * 10 + margin as i32,
+                    (res_y as i32 - (po.y as i32 * 10 + margin)),
+                ));
+            }
+            {
+                let po = &v[mapping.map_from(to)];
+                line_points.push((
+                    po.x as i32 * 10 + margin as i32,
+                    (res_y as i32 - (po.y as i32 * 10 + margin)),
+                ));
             }
             root.draw(&Polygon::new(line_points, &BLACK)).unwrap();
         }
