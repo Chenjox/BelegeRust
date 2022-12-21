@@ -107,7 +107,7 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
         // Größter Koeffizient der ZF ist Pivotspalte
         let mut pivotcol = 0;
         let mut max = 0.0;
-        for i in 0..n_vars-1 {
+        for i in 0..n_vars - 1 {
             let current = tablaux[(0, i)];
             if current > max {
                 max = current;
@@ -146,18 +146,20 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
         }
         // Alle Element außer der Pivotzeilen + Spalten
         for i in 0..n_zeilen {
-            for j in 0..n_vars-1 {
+            for j in 0..n_vars - 1 {
                 if i != pivotrow && j != pivotcol {
-                    tablaux[(i,j)] = tablaux[(i,j)] - tablaux[(i,pivotcol)]*tablaux[(pivotrow,j)];
+                    tablaux[(i, j)] =
+                        tablaux[(i, j)] - tablaux[(i, pivotcol)] * tablaux[(pivotrow, j)];
                 }
             }
         }
         //Zielfunktionsergebnis
-        tablaux[(0,n_vars-1)] = tablaux[(0,n_vars-1)] - tablaux[(0,pivotcol)]*tablaux[(pivotrow,n_vars-1)];
+        tablaux[(0, n_vars - 1)] =
+            tablaux[(0, n_vars - 1)] - tablaux[(0, pivotcol)] * tablaux[(pivotrow, n_vars - 1)];
         // Alle Pivotspaltenelemente außer Pivotelement selbst
         for i in 0..n_zeilen {
             if i != pivotrow {
-                tablaux[(i,pivotcol)] = 0.0;
+                tablaux[(i, pivotcol)] = 0.0;
             }
         }
     }
@@ -167,9 +169,9 @@ pub fn linear_optimize(zf: &LineareZielfunktion, nb: &Vec<Nebenbedingung>) -> Ve
     let mut res = Vec::new();
     for i in 0..zf.koeffizienten.len() {
         if erg_indizes[i] != usize::MAX {
-          res.push( tablaux[(erg_indizes[i],n_vars-1)] );
+            res.push(tablaux[(erg_indizes[i], n_vars - 1)]);
         } else {
-          res.push(0.0);
+            res.push(0.0);
         }
     }
 

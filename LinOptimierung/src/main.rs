@@ -25,7 +25,7 @@ fn belegaufgabe() {
     ];
 
     let erg = linear_optimize(&zf, &nbs);
-    println!("{:?}",erg);
+    println!("{:?}", erg);
 }
 
 fn uebungsvariable() {
@@ -51,7 +51,7 @@ fn uebungsvariable() {
     ];
 
     let erg = linear_optimize(&zf, &nbs);
-    println!("{:?}",erg);
+    println!("{:?}", erg);
 }
 
 fn main() {
