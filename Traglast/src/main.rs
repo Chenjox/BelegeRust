@@ -300,9 +300,9 @@ fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
     });
 
     kant.swap_remove(3);
-    kant.swap_remove(5);
-    kant.swap_remove(7);
-    kant.swap_remove(9);
+    kant.swap_remove(4);
+    //kant.swap_remove(7);
+    kant.swap_remove(27);
 
     return (v, kant);
 }
@@ -478,7 +478,7 @@ fn get_adjacency_matrix(pvec: &Vec<Point>, sortVec: &Vec<usize>, bvec: &Vec<Beam
 }
 
 // Aufstellen des Polplans
-fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) {
+fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) -> DCoordMat {
     let mapping = Mapping {
         map: sortPoints(&points),
     };
@@ -524,7 +524,7 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
             if is_erde {
                 for j in 0..con_bodies.len() {
                     if con_bodies[j] != erd {
-                        let po = &points[mapping.map_from(connect_points[i].0)];
+                        let po = &points[connect_points[i].0];
                         if !mat[(con_bodies[j], con_bodies[j])].exists() {
                             mat[(con_bodies[j], con_bodies[j])] = Pol::new(false, po.x, po.y);
                         } else {
@@ -538,9 +538,11 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         let rigid = rigid;
         // Jetzt die Offenkundigen Nebenpole
         let connect_points = get_rigid_body_connectivity(points, &rigid);
+        //println!("{:?}", rigid);
+        //println!("{:?}", connect_points);
         for i in 0..connect_points.len() {
-            let con_bodies = &connect_points[i].1;
-            let po = &points[mapping.map_from(connect_points[i].0)];
+            let con_bodies = &connect_points[i].1; // alle indezes der verbundenen Rigidbodies
+            let po = &points[connect_points[i].0]; // der index des punktes in point
             for j in 0..con_bodies.len() {
                 // mindestens 2 Elemente müssen enthalten sein
                 for k in j + 1..con_bodies.len() {
@@ -549,10 +551,9 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                 }
             }
         }
-        println!("{:?}", rigid);
-        println!("{:?}", connect_points);
+        
     }
-    println!("{}", mat);
+    //println!("{}", mat);
     // Matrix der Bedingungen
     let anzahl_pole = bodies.len() - 1;
     let mut mat_bed = DAdjUsize::from_element(anzahl_pole, anzahl_pole, 0);
@@ -600,7 +601,6 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
     }
     // Nebenpolbedingungen ()
     println!("{}", mat_bed);
-    println!("{:?}", best_kandidates);
 
     loop {
         // Finden des besten kandidaten
@@ -624,14 +624,14 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                         }
                     }
                 }
-                for l in kfinal + 1..anzahl_pole {
+                for l in 0..anzahl_pole - 1 {
                     if l < j {
-                        if mat[(l, l)].exists() && mat[(j, l)].exists() {
+                        if l != kfinal && mat[(l, l)].exists() && mat[(j, l)].exists() {
                             lfinal = l;
                             break;
                         }
                     } else {
-                        if mat[(l + 1, l + 1)].exists() && mat[(j, l + 1)].exists() {
+                        if l+1 != kfinal && mat[(l + 1, l + 1)].exists() && mat[(j, l + 1)].exists() {
                             lfinal = l + 1;
                             break;
                         }
@@ -640,7 +640,10 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                 let k = kfinal;
                 let l = lfinal;
                 let new_pol = Pol::infer(&mat[(k, k)], &mat[(i, k)], &mat[(l, l)], &mat[(j, l)]);
-                println!("{}", new_pol);
+                println!(
+                    "HPNP HPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
+                    k, k, i, k, l, l, j, l, i,j,new_pol
+                );
                 mat[(i, j)] = new_pol;
                 mat_bed[(i, j)] = 0; // hier gibt es nichts mehr
                                      // Ein neuer Hauptpol bei i und j!
@@ -661,25 +664,87 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
             } else {
                 // Es ist ein Nebenpol zu bestimmen
                 // Erste Möglichkeit HP-HP-NP-NP
+
                 if mat[(i, i)].exists() && mat[(j, j)].exists() {
                     // es existieren 2 Hauptpole
                     //finden der nebenpole
+                    let mut found_polpaar = false;
+
                     let mut kfinal = 0;
                     for k in 0..anzahl_pole {
                         if mat[(i, k)].exists() && mat[(j, k)].exists() {
                             // Ein NP Paar gefunden!
                             kfinal = k;
+                            found_polpaar = true;
                             break;
                         }
                     }
-                    let k = kfinal;
-                    let new_pol =
-                        Pol::infer(&mat[(i, i)], &mat[(j, j)], &mat[(i, k)], &mat[(j, k)]);
-                    println!("{}", new_pol);
-                    mat[(i, j)] = new_pol.clone();
-                    mat[(j, i)] = new_pol;
-                    mat_bed[(i, j)] = 0;
-                    mat_bed[(j, i)] = 0;
+                    if found_polpaar {
+                        let k = kfinal;
+                        let new_pol =
+                            Pol::infer(&mat[(i, i)], &mat[(j, j)], &mat[(i, k)], &mat[(j, k)]);
+                        println!(
+                            "HPHP NPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
+                            i, i, j, j, i, k, j, k, i,j, new_pol
+                        );
+                        mat[(i, j)] = new_pol.clone();
+                        mat[(j, i)] = new_pol;
+                        mat_bed[(i, j)] = 0;
+                        mat_bed[(j, i)] = 0;
+                    } else {
+                        // zweite Möglichkeit NP-NP-NP-NP
+                        // Der erste Index der erst zu inferierenden
+                        let mut ktupel = (0, 0);
+                        'kloop: for kj in 0..anzahl_pole {
+                            if i != kj && mat[(i, kj)].exists() {
+                                // potentiell erster NP des ersten Paars gefunden!
+                                for ki in 0..anzahl_pole {
+                                    if ki != kj && mat[(ki, kj)].exists() {
+                                        // erstes NP Paar gefunden!
+                                        ktupel = (ki, kj);
+                                        break 'kloop;
+                                    }
+                                }
+                            }
+                        }
+                        let mut ltupel = (0, 0);
+                        'lloop: for li in 0..anzahl_pole {
+                            if j != li && mat[(li, j)].exists() {
+                                // potentiell erster NP des zweiten Paars gefunden!
+                                for lj in 0..anzahl_pole {
+                                    if li != lj && mat[(li, lj)].exists() {
+                                        // zweistes NP Paar gefunden!
+                                        ktupel = (li, lj);
+                                        break 'lloop;
+                                    }
+                                }
+                            }
+                        }
+                        let new_pol = Pol::infer(
+                            &mat[(i, ktupel.1)],
+                            &mat[ktupel],
+                            &mat[(ltupel.0, j)],
+                            &mat[ltupel],
+                        );
+                        println!(
+                            "NPNP NPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
+                            i,
+                            ktupel.1,
+                            ktupel.0,
+                            ktupel.1,
+                            ltupel.0,
+                            j,
+                            ltupel.0,
+                            ltupel.1,
+                            i,
+                            j,
+                            new_pol
+                        );
+                        mat[(i, j)] = new_pol.clone();
+                        mat[(j, i)] = new_pol;
+                        mat_bed[(i, j)] = 0;
+                        mat_bed[(j, i)] = 0;
+                    }
                 } else {
                     // zweite Möglichkeit NP-NP-NP-NP
                     // Der erste Index der erst zu inferierenden
@@ -715,7 +780,10 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                         &mat[(ltupel.0, j)],
                         &mat[ltupel],
                     );
-                    println!("{}", new_pol);
+                    println!(
+                        "NPNP NPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
+                        i, ktupel.1, ktupel.0, ktupel.1, ltupel.0, j, ltupel.0, ltupel.1, i, j, new_pol
+                    );
                     mat[(i, j)] = new_pol.clone();
                     mat[(j, i)] = new_pol;
                     mat_bed[(i, j)] = 0;
@@ -749,6 +817,7 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         } else {
             break;
         }
+        //println!("{:?}", best_kandidates);
         let mut is_all_zero = true;
         for i in 0..anzahl_pole {
             for j in i..anzahl_pole {
@@ -756,7 +825,8 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                     is_all_zero = false;
                 }
                 if mat_bed[(i, j)] > 1 {
-                    best_kandidates.push((i, j));
+                    best_kandidates.insert(0, (i, j));
+                    mat_bed[(i, j)] = 0;
                 }
             }
         }
@@ -765,7 +835,8 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         }
         //println!("{}", mat_bed);
     }
-    println!("{}", mat);
+    //println!("{}", mat);
+    return mat;
 }
 
 fn main() {
@@ -780,7 +851,7 @@ fn main() {
 
     let mut rigid = get_rigid_bodies(&v, &kant, &erd);
 
-    polplan(&v, &rigid, &erd);
+    let pole = polplan(&v, &rigid, &erd);
 
     {
         let res_y = 200;
@@ -819,6 +890,34 @@ fn main() {
                 ));
             }
             root.draw(&Polygon::new(line_points, &BLACK)).unwrap();
+        }
+        for i in 0..rigid.len() - 1 {
+            for j in i..rigid.len() - 1 {
+                let x = pole[(i, j)].x;
+                let y = pole[(i, j)].x;
+                let infty = pole[(i, j)].is_at_infinity;
+                if i == j && !infty {
+                    root.draw(&Circle::new(
+                        (
+                            x as i32 * 10 + margin,
+                            (res_y as i32 - (y as i32 * 10 + margin)),
+                        ),
+                        2,
+                        Into::<ShapeStyle>::into(&RED).filled(),
+                    ))
+                    .unwrap();
+                } else if !infty {
+                    root.draw(&Circle::new(
+                        (
+                            x as i32 * 10 + margin,
+                            (res_y as i32 - (y as i32 * 10 + margin)),
+                        ),
+                        1,
+                        Into::<ShapeStyle>::into(&BLUE).filled(),
+                    ))
+                    .unwrap();
+                }
+            }
         }
 
         // And if we want SVG backend
