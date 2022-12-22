@@ -4,7 +4,6 @@ use nalgebra::{SMatrix, SVector};
 type Matrix2x2 = SMatrix<f64, 2, 2>;
 type Vector2 = SVector<f64, 2>;
 
-
 type Matrix4x4 = SMatrix<f64, 4, 4>;
 type Vector4 = SVector<f64, 4>;
 
@@ -57,21 +56,27 @@ fn main() {
     let omegamt = omega * omega * mt;
 
     let mat = Matrix4x4::new(
-        kr + kt + omegamr, -kt, omegadt, -omegadt,
-        -kt, kt-omegamt, -omegadt, omegadt,
-        -omegadt, omegadt, kr + kt + omegamr, -kt,
-        -omegadt, omegadt, -kt, kt-omegamt
+        kr + kt + omegamr,
+        -kt,
+        omegadt,
+        -omegadt,
+        -kt,
+        kt - omegamt,
+        -omegadt,
+        omegadt,
+        -omegadt,
+        omegadt,
+        kr + kt + omegamr,
+        -kt,
+        -omegadt,
+        omegadt,
+        -kt,
+        kt - omegamt,
     );
-    let bvec = Vector4::new(
-        10000.0,
-        0.0,
-        0.0,
-        0.0
-    );
+    let bvec = Vector4::new(10000.0, 0.0, 0.0, 0.0);
 
     let so = mat.full_piv_lu();
     let x = so.solve(&bvec);
 
-    println!("{}",x.unwrap());
-    
+    println!("{}", x.unwrap());
 }

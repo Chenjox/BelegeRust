@@ -1,30 +1,41 @@
+mod visualisation;
+
 use nalgebra::{Dynamic, OMatrix};
-use plotters::prelude::*;
 use std::fmt;
+use visualisation::visualise;
 
 type DAdjUsize = OMatrix<usize, Dynamic, Dynamic>;
 
 #[derive(Debug, Clone)]
-struct Point {
-    num: usize,
-    name: String,
-    x: f64,
-    y: f64,
+pub struct Point {
+    pub num: usize,
+    pub name: String,
+    pub x: f64,
+    pub y: f64,
 }
 
 #[derive(Clone, PartialEq, Debug)]
-struct Pol {
-    is_at_infinity: bool,
-    x: f64,
-    y: f64,
+pub struct Pol {
+    pub is_at_infinity: bool,
+    pub x: f64,
+    pub y: f64,
 }
+
+#[derive(Debug, Clone)]
+struct Polschlussregel([usize; 2], [usize; 2], [usize; 2]);
 
 impl fmt::Display for Pol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.x.is_nan() {
             write!(f, "()")
         } else {
-            write!(f, "({}, {}, {})", self.is_at_infinity, self.x, self.y)
+            write!(
+                f,
+                "({0}, {1:.4}, {2:.4})",
+                if self.is_at_infinity { "Inf" } else { "000" },
+                self.x,
+                self.y
+            )
         }
     }
 }
@@ -39,6 +50,9 @@ impl Pol {
     }
     fn exists(&self) -> bool {
         return !self.x.is_nan() && !self.y.is_nan();
+    }
+    fn is_same(&self, other: &Pol) -> bool {
+        return (self.x - other.x).abs() < 1e-16 && (self.y - other.y).abs() < 1e-16;
     }
 }
 impl Pol {
@@ -90,31 +104,31 @@ impl Pol {
 type DCoordMat = OMatrix<Pol, Dynamic, Dynamic>;
 
 #[derive(Debug)]
-struct Beam {
-    from: usize,
-    to: usize,
-    nplast: f64,
+pub struct Beam {
+    pub from: usize,
+    pub to: usize,
+    pub nplast: f64,
 }
 
 #[derive(Debug)]
 struct Triangle(usize, usize, usize);
 
 #[derive(Debug, Clone)]
-struct RigidBody {
-    points: Vec<usize>,
+pub struct RigidBody {
+    pub points: Vec<usize>,
 }
 
-struct Mapping {
-    map: Vec<usize>,
+pub struct Mapping {
+    pub map: Vec<usize>,
 }
 
 impl Mapping {
     // 0 -> 1
-    fn map_to(&self, index: usize) -> usize {
+    pub fn map_to(&self, index: usize) -> usize {
         return self.map[index];
     }
     //
-    fn map_from(&self, index: usize) -> usize {
+    pub fn map_from(&self, index: usize) -> usize {
         for i in 0..self.map.len() {
             if index == self.map[i] {
                 return i;
@@ -127,9 +141,12 @@ impl Mapping {
 impl RigidBody {
     fn is_joined_with(&self, other: &RigidBody) -> bool {
         let mut count = 0;
-        for i in &self.points {
-            if other.points.contains(i) {
-                count = count + 1;
+        for i in 0..self.points.len() {
+            for j in 0..other.points.len() {
+                if self.points[i] == other.points[j] {
+                    //println!("{},{},{},{}",i,j,self.points[i],other.points[j]);
+                    count += 1;
+                }
             }
         }
         return count >= 2;
@@ -372,33 +389,51 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) ->
         .map(|tri| tri.to_rigid_body())
         .collect();
     // Alle Rigid Bodys die zusammengehören, zusammenbasteln
-    let mut iter = 0;
-    let max_iter = rigid.len() * (rigid.len() + 1) / 2;
+
+    // alle Rigidbodys zusammenführen
+    //println!("{:?}\n", rigid);
+    let rgid_len = rigid.len();
+
+    let mut cur_i = 0;
     loop {
-        iter = iter + 1;
         let mut has_changed = false;
-        // alle Rigidbodys zusammenführen
-        if let Some(bod) = rigid.pop() {
-            // nehme den letzten RigidBody!
-            for i in 0..rigid.len() {
-                if let Some(bod2) = rigid.pop() {
-                    // nehme den zweitletzten
-                    if bod.is_joined_with(&bod2) {
-                        rigid.insert(0, bod.join_with(bod2));
-                        has_changed = true;
-                    } else {
-                        rigid.insert(0, bod2);
-                    }
+        let mut anz_rem = 0;
+        if cur_i < rigid.len() - 1 {
+            for j in 1..rigid.len() - cur_i {
+                if rigid[cur_i].is_joined_with(&rigid[cur_i + j - anz_rem]) {
+                    let bod2 = rigid.remove(cur_i + j - anz_rem);
+                    has_changed = has_changed || true;
+                    anz_rem += 1;
+                    rigid[cur_i] = rigid[cur_i].join_with(bod2);
                 }
             }
-            if !has_changed {
-                rigid.insert(0, bod);
-            }
         }
-        if !has_changed || iter > max_iter {
+        if !has_changed {
             break;
         }
+        cur_i += 1;
     }
+    let mut cur_i = 0;
+    loop {
+        let mut has_changed = false;
+        let mut anz_rem = 0;
+        if cur_i < rigid.len() - 1 {
+            for j in 1..rigid.len() - cur_i {
+                if rigid[cur_i].is_joined_with(&rigid[cur_i + j - anz_rem]) {
+                    let bod2 = rigid.remove(cur_i + j - anz_rem);
+                    has_changed = has_changed || true;
+                    anz_rem += 1;
+                    rigid[cur_i] = rigid[cur_i].join_with(bod2);
+                }
+            }
+        }
+        if !has_changed {
+            break;
+        }
+        cur_i += 1;
+    }
+    //println!("{:?}\n", rigid);
+
     // Und einzelne Kanten zu Rigidbodys hinzufügen
     for i in kant_not {
         let from = kant[i].from;
@@ -407,6 +442,7 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) ->
             points: vec![from, to],
         })
     }
+    //println!("{:?}\n", rigid);
     return rigid;
 }
 
@@ -430,7 +466,7 @@ fn get_rigid_body_connectivity(
 }
 
 // Eine optimierte indizierung
-fn sortPoints(pvec: &Vec<Point>) -> Vec<usize> {
+pub fn sortPoints(pvec: &Vec<Point>) -> Vec<usize> {
     let mut sortVec = vec![0; pvec.len()];
 
     // hier könnte ich McKee Cuthill machen
@@ -551,289 +587,118 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                 }
             }
         }
-        
     }
     //println!("{}", mat);
-    // Matrix der Bedingungen
     let anzahl_pole = bodies.len() - 1;
-    let mut mat_bed = DAdjUsize::from_element(anzahl_pole, anzahl_pole, 0);
-    let mut best_kandidates = Vec::new();
+    // Vector der bekannten Schlussregeln
+    let mut regeln = Vec::new();
 
     for i in 0..anzahl_pole {
-        //Nebenpolbedingung 1 (HP HP)
-        for j in i + 1..anzahl_pole {
-            // (HP HP)
-            if i != j && mat[(i, i)].exists() && mat[(j, j)].exists() {
-                // Zwei Hauptpole sind bekannt
-                mat_bed[(i, j)] += 1; // Wir können eine Aussage über den Nebenpol treffen
-                mat_bed[(j, i)] += 1; // Wir können eine Aussage über den Nebenpol treffen
-            }
-        }
-        for j in i + 1..anzahl_pole {
-            // (NP NP)
-            if i != j && mat[(i, j)].exists() {
-                for k in j + 1..anzahl_pole {
-                    if mat[(i, j)].exists() && mat[(i, k)].exists() {
-                        mat_bed[(k, j)] += 1; // Wir können eine Aussage über den Nebenpol treffen
-                        mat_bed[(j, k)] += 1;
+        // Iterieren durch alle möglichen
+        for j in i..anzahl_pole {
+            // Der i,j Pol mit
+            if mat[(i, j)].exists() {
+                for k in 0..anzahl_pole {
+                    for l in k..anzahl_pole {
+                        // mit dem k,l ten pol
+                        if i == j && i == k && i != l && mat[(i, l)].exists() {
+                            // (i,j) + (k,l) Remap (i,i) + (i,l) -> (l,l) HP+NP -> (HP)
+                            regeln.push(Polschlussregel([i, i], [i, l], [l, l]));
+                        }
+                        if i == j && k == l && k > i && mat[(k, k)].exists() {
+                            // (i,j) + (k,l) Remap (i,i) + (k,k) -> (i,k) HP+HP -> (NP)
+                            regeln.push(Polschlussregel([i, i], [k, k], [i, k]));
+                        }
+                        if i != j && k != l && l > j && i == k && mat[(k, l)].exists() {
+                            // (i,j) + (k,l) Remap (i,j) + (i,l) -> (j,l)
+                            regeln.push(Polschlussregel([i, j], [i, l], [j, l]));
+                        }
                     }
                 }
             }
         }
-        for j in 0..anzahl_pole {
-            //Hauptpolbedingungen (HPNP)
-            if mat[(i, i)].exists() && i != j {
-                // Der Hauptpol ist bekannt
-                // Wir haben also einen Nebenpol
-                if mat[(i, j)].exists() {
-                    // Der Nebenpol ist bekannt
-                    mat_bed[(j, j)] += 1; // Wir können eine Aussage über den Hauptpol treffen
-                }
-            }
-        }
     }
-    for i in 0..anzahl_pole {
-        for j in i..anzahl_pole {
-            if mat_bed[(i, j)] > 1 {
-                best_kandidates.push((i, j));
-            }
-        }
-    }
-    // Nebenpolbedingungen ()
-    println!("{}", mat_bed);
 
     loop {
-        // Finden des besten kandidaten
-        if let Some((i, j)) = best_kandidates.pop() {
-            // Ist es ein Haupt oder nebenpol?
-            if i == j {
-                // Also ein Hauptpol
-                // Finden des ersten pols mit zulässigem Hauptpol und Nebenpol
-                let mut kfinal = 0;
-                let mut lfinal = 0;
-                for k in 0..anzahl_pole - 1 {
-                    if k < i {
-                        if mat[(k, k)].exists() && mat[(i, k)].exists() {
-                            kfinal = k;
-                            break;
-                        }
-                    } else {
-                        if mat[(k + 1, k + 1)].exists() && mat[(i, k + 1)].exists() {
-                            kfinal = k + 1;
-                            break;
-                        }
-                    }
-                }
-                for l in 0..anzahl_pole - 1 {
-                    if l < j {
-                        if l != kfinal && mat[(l, l)].exists() && mat[(j, l)].exists() {
-                            lfinal = l;
-                            break;
-                        }
-                    } else {
-                        if l+1 != kfinal && mat[(l + 1, l + 1)].exists() && mat[(j, l + 1)].exists() {
-                            lfinal = l + 1;
-                            break;
-                        }
-                    }
-                } // kfinal und lfinal gefunden!
-                let k = kfinal;
-                let l = lfinal;
-                let new_pol = Pol::infer(&mat[(k, k)], &mat[(i, k)], &mat[(l, l)], &mat[(j, l)]);
-                println!(
-                    "HPNP HPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
-                    k, k, i, k, l, l, j, l, i,j,new_pol
-                );
-                mat[(i, j)] = new_pol;
-                mat_bed[(i, j)] = 0; // hier gibt es nichts mehr
-                                     // Ein neuer Hauptpol bei i und j!
-                                     // aktualisieren der Bedingungsmatrix
-                                     //Nebenpolbedingung 1 (HP HP)
-                for k in 0..anzahl_pole {
-                    // (HP HP)
-                    if i != k && mat[(k, k)].exists() && !mat[(i, k)].exists() {
-                        // HP HP -> NP
-                        mat_bed[(i, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
-                        mat_bed[(k, i)] += 1;
-                    }
-                    if i != k && mat[(k, i)].exists() && !mat[(k, k)].exists() {
-                        // HP NP -> HP
-                        mat_bed[(k, k)] += 1; // Wir können eine Aussage über den Hauptpol treffen
-                    }
-                }
-            } else {
-                // Es ist ein Nebenpol zu bestimmen
-                // Erste Möglichkeit HP-HP-NP-NP
-
-                if mat[(i, i)].exists() && mat[(j, j)].exists() {
-                    // es existieren 2 Hauptpole
-                    //finden der nebenpole
-                    let mut found_polpaar = false;
-
-                    let mut kfinal = 0;
-                    for k in 0..anzahl_pole {
-                        if mat[(i, k)].exists() && mat[(j, k)].exists() {
-                            // Ein NP Paar gefunden!
-                            kfinal = k;
-                            found_polpaar = true;
-                            break;
-                        }
-                    }
-                    if found_polpaar {
-                        let k = kfinal;
-                        let new_pol =
-                            Pol::infer(&mat[(i, i)], &mat[(j, j)], &mat[(i, k)], &mat[(j, k)]);
-                        println!(
-                            "HPHP NPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
-                            i, i, j, j, i, k, j, k, i,j, new_pol
-                        );
-                        mat[(i, j)] = new_pol.clone();
-                        mat[(j, i)] = new_pol;
-                        mat_bed[(i, j)] = 0;
-                        mat_bed[(j, i)] = 0;
-                    } else {
-                        // zweite Möglichkeit NP-NP-NP-NP
-                        // Der erste Index der erst zu inferierenden
-                        let mut ktupel = (0, 0);
-                        'kloop: for kj in 0..anzahl_pole {
-                            if i != kj && mat[(i, kj)].exists() {
-                                // potentiell erster NP des ersten Paars gefunden!
-                                for ki in 0..anzahl_pole {
-                                    if ki != kj && mat[(ki, kj)].exists() {
-                                        // erstes NP Paar gefunden!
-                                        ktupel = (ki, kj);
-                                        break 'kloop;
-                                    }
-                                }
-                            }
-                        }
-                        let mut ltupel = (0, 0);
-                        'lloop: for li in 0..anzahl_pole {
-                            if j != li && mat[(li, j)].exists() {
-                                // potentiell erster NP des zweiten Paars gefunden!
-                                for lj in 0..anzahl_pole {
-                                    if li != lj && mat[(li, lj)].exists() {
-                                        // zweistes NP Paar gefunden!
-                                        ktupel = (li, lj);
-                                        break 'lloop;
-                                    }
-                                }
-                            }
-                        }
-                        let new_pol = Pol::infer(
-                            &mat[(i, ktupel.1)],
-                            &mat[ktupel],
-                            &mat[(ltupel.0, j)],
-                            &mat[ltupel],
-                        );
-                        println!(
-                            "NPNP NPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
-                            i,
-                            ktupel.1,
-                            ktupel.0,
-                            ktupel.1,
-                            ltupel.0,
-                            j,
-                            ltupel.0,
-                            ltupel.1,
-                            i,
-                            j,
-                            new_pol
-                        );
-                        mat[(i, j)] = new_pol.clone();
-                        mat[(j, i)] = new_pol;
-                        mat_bed[(i, j)] = 0;
-                        mat_bed[(j, i)] = 0;
-                    }
-                } else {
-                    // zweite Möglichkeit NP-NP-NP-NP
-                    // Der erste Index der erst zu inferierenden
-                    let mut ktupel = (0, 0);
-                    'kloop: for kj in 0..anzahl_pole {
-                        if i != kj && mat[(i, kj)].exists() {
-                            // potentiell erster NP des ersten Paars gefunden!
-                            for ki in 0..anzahl_pole {
-                                if ki != kj && mat[(ki, kj)].exists() {
-                                    // erstes NP Paar gefunden!
-                                    ktupel = (ki, kj);
-                                    break 'kloop;
-                                }
-                            }
-                        }
-                    }
-                    let mut ltupel = (0, 0);
-                    'lloop: for li in 0..anzahl_pole {
-                        if j != li && mat[(li, j)].exists() {
-                            // potentiell erster NP des zweiten Paars gefunden!
-                            for lj in 0..anzahl_pole {
-                                if li != lj && mat[(li, lj)].exists() {
-                                    // zweistes NP Paar gefunden!
-                                    ktupel = (li, lj);
-                                    break 'lloop;
-                                }
-                            }
-                        }
-                    }
-                    let new_pol = Pol::infer(
-                        &mat[(i, ktupel.1)],
-                        &mat[ktupel],
-                        &mat[(ltupel.0, j)],
-                        &mat[ltupel],
-                    );
-                    println!(
-                        "NPNP NPNP: [{},{}]  [{},{}] + [{},{}]  [{},{}] -> [{},{}],{}",
-                        i, ktupel.1, ktupel.0, ktupel.1, ltupel.0, j, ltupel.0, ltupel.1, i, j, new_pol
-                    );
-                    mat[(i, j)] = new_pol.clone();
-                    mat[(j, i)] = new_pol;
-                    mat_bed[(i, j)] = 0;
-                    mat_bed[(j, i)] = 0;
-                }
-                // Nebenpol wurde gefunden!
-                // Überarbeiten der mat_bed
-                // (HP NP)
-                if mat[(i, i)].exists() && !mat[(j, j)].exists() {
-                    // (ij) + (i) -> (j)
-                    mat_bed[(j, j)] += 1;
-                }
-                if mat[(j, j)].exists() && !mat[(i, i)].exists() {
-                    // (ij) + (i) -> (j)
-                    mat_bed[(i, i)] += 1;
-                }
-                // (NP NP)
-                for k in 0..anzahl_pole {
-                    if k != i && k != j && mat[(i, k)].exists() && !mat[(j, k)].exists() {
-                        // (ij) + (ik) -> GO(ik)
-                        mat_bed[(j, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
-                        mat_bed[(k, j)] += 1;
-                    }
-                    if k != i && k != j && mat[(j, k)].exists() && !mat[(i, k)].exists() {
-                        // (ij) + (ik) -> GO(ik)
-                        mat_bed[(i, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
-                        mat_bed[(k, i)] += 1;
-                    }
+        if regeln.len() == 0 {
+            break;
+        }
+        let mut ig = 0;
+        let mut jg = 0;
+        for i in 0..regeln.len() {
+            for j in i + 1..regeln.len() {
+                if regeln[i].2[0] == regeln[j].2[0] && regeln[i].2[1] == regeln[j].2[1] {
+                    ig = i;
+                    jg = j;
                 }
             }
+        }
+
+        //println!("{},{},{:?},{:?}", ig,jg,regeln[ig],regeln[jg]);
+        let regel1 = regeln.remove(ig);
+        let regel2 = regeln.remove(jg - 1); // da immer i < j gilt!
+                                            //println!("{:?},{:?}", regel1, regel2);
+                                            // Inferiere den Pol
+                                            // Regeln sind ja schön, aber hier brauch ich ne Fallunterscheidung
+                                            // Wenn (i,j) + (j,k) schon aufeinaner liegen, dann ist der dritte Pol auch dort!
+        let newpol_i = regel1.2[0];
+        let newpol_j = regel1.2[1];
+        if mat[(regel1.0[0], regel1.0[1])].is_same(&mat[(regel1.1[0], regel1.1[1])]) {
+            mat[(newpol_i, newpol_j)] = mat[(regel1.0[0], regel1.0[1])].clone();
+            mat[(newpol_j, newpol_i)] = mat[(regel1.0[0], regel1.0[1])].clone();
+        } else if mat[(regel2.0[0], regel2.0[1])].is_same(&mat[(regel2.1[0], regel2.1[1])]) {
+            mat[(newpol_i, newpol_j)] = mat[(regel2.0[0], regel2.0[1])].clone();
+            mat[(newpol_j, newpol_i)] = mat[(regel2.0[0], regel2.0[1])].clone();
         } else {
-            break;
+            let new_pol = Pol::infer(
+                &mat[(regel1.0[0], regel1.0[1])],
+                &mat[(regel1.1[0], regel1.1[1])],
+                &mat[(regel2.0[0], regel2.0[1])],
+                &mat[(regel2.1[0], regel2.1[1])],
+            );
+
+            //println!("[{},{}] = {}", newpol_i, newpol_j, new_pol);
+            mat[(newpol_i, newpol_j)] = new_pol.clone();
+            mat[(newpol_j, newpol_i)] = new_pol;
         }
-        //println!("{:?}", best_kandidates);
-        let mut is_all_zero = true;
+        // neue Schlussregeln
         for i in 0..anzahl_pole {
+            // Iterieren durch alle möglichen
             for j in i..anzahl_pole {
-                if mat_bed[(i, j)] > 0 {
-                    is_all_zero = false;
-                }
-                if mat_bed[(i, j)] > 1 {
-                    best_kandidates.insert(0, (i, j));
-                    mat_bed[(i, j)] = 0;
+                // Der i,j Pol mit
+                if mat[(i, j)].exists() {
+                    for k in 0..anzahl_pole {
+                        for l in 0..anzahl_pole {
+                            // mit dem k,l ten pol
+                            if i == j && i == k && i != l && mat[(i, l)].exists() {
+                                // (i,j) + (k,l) Remap (i,i) + (i,l) -> (l,l) HP+NP -> (HP)
+                                regeln.push(Polschlussregel([i, i], [i, l], [l, l]));
+                            }
+                            if i == j && k == l && mat[(k, k)].exists() {
+                                // (i,j) + (k,l) Remap (i,i) + (k,k) -> (i,k) HP+HP -> (NP)
+                                regeln.push(Polschlussregel([i, i], [k, k], [i, k]));
+                            }
+                            if i != j && k != l && i == k && mat[(k, l)].exists() {
+                                // (i,j) + (k,l) Remap (i,j) + (i,l) -> (j,l) NP+NP -> (NP)
+                                regeln.push(Polschlussregel([i, j], [i, l], [j, l]));
+                            }
+                        }
+                    }
                 }
             }
         }
-        if is_all_zero {
-            break;
+        let anz_reg = regeln.len();
+        let mut anz_remov = 0;
+        for re in 0..anz_reg {
+            let re = re - anz_remov;
+            if regeln[re].2[0] == newpol_i && regeln[re].2[1] == newpol_j
+                || regeln[re].2[0] == newpol_j && regeln[re].2[1] == newpol_i
+                || mat[(regeln[re].2[0], regeln[re].2[1])].exists()
+            {
+                regeln.remove(re);
+                anz_remov += 1;
+            }
         }
-        //println!("{}", mat_bed);
     }
     //println!("{}", mat);
     return mat;
@@ -849,78 +714,9 @@ fn main() {
         points: vec![15, 16, 17, 18],
     };
 
-    let mut rigid = get_rigid_bodies(&v, &kant, &erd);
+    let rigid = get_rigid_bodies(&v, &kant, &erd);
 
     let pole = polplan(&v, &rigid, &erd);
 
-    {
-        let res_y = 200;
-        let res_x = 300;
-        let margin = 10;
-        let root = BitMapBackend::new("1.png", (res_x, res_y)).into_drawing_area();
-        root.fill(&WHITE).unwrap();
-
-        for i in &v {
-            root.draw(&Circle::new(
-                (
-                    i.x as i32 * 10 + margin,
-                    (res_y as i32 - (i.y as i32 * 10 + margin)),
-                ),
-                5,
-                Into::<ShapeStyle>::into(&GREEN).filled(),
-            ))
-            .unwrap();
-        }
-        for i in &kant {
-            let from = i.from;
-            let to = i.to;
-            let mut line_points = Vec::new();
-            {
-                let po = &v[mapping.map_from(from)];
-                line_points.push((
-                    po.x as i32 * 10 + margin as i32,
-                    (res_y as i32 - (po.y as i32 * 10 + margin)),
-                ));
-            }
-            {
-                let po = &v[mapping.map_from(to)];
-                line_points.push((
-                    po.x as i32 * 10 + margin as i32,
-                    (res_y as i32 - (po.y as i32 * 10 + margin)),
-                ));
-            }
-            root.draw(&Polygon::new(line_points, &BLACK)).unwrap();
-        }
-        for i in 0..rigid.len() - 1 {
-            for j in i..rigid.len() - 1 {
-                let x = pole[(i, j)].x;
-                let y = pole[(i, j)].x;
-                let infty = pole[(i, j)].is_at_infinity;
-                if i == j && !infty {
-                    root.draw(&Circle::new(
-                        (
-                            x as i32 * 10 + margin,
-                            (res_y as i32 - (y as i32 * 10 + margin)),
-                        ),
-                        2,
-                        Into::<ShapeStyle>::into(&RED).filled(),
-                    ))
-                    .unwrap();
-                } else if !infty {
-                    root.draw(&Circle::new(
-                        (
-                            x as i32 * 10 + margin,
-                            (res_y as i32 - (y as i32 * 10 + margin)),
-                        ),
-                        1,
-                        Into::<ShapeStyle>::into(&BLUE).filled(),
-                    ))
-                    .unwrap();
-                }
-            }
-        }
-
-        // And if we want SVG backend
-        // let backend = SVGBackend::new("output.svg", (800, 600));
-    }
+    visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
 }
