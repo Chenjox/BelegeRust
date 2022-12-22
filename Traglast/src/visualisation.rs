@@ -1,3 +1,4 @@
+use numerals::roman::Roman;
 use plotters::coord::types::RangedCoordf64;
 use plotters::prelude::full_palette::{
     AMBER_900, BLUEGREY_800, BLUE_900, BROWN_900, CYAN_900, DEEPORANGE_900, LIME_900, PURPLE_900,
@@ -5,7 +6,7 @@ use plotters::prelude::full_palette::{
 };
 use plotters::prelude::*;
 
-use crate::{sortPoints, Beam, DCoordMat, Mapping, Point, RigidBody};
+use crate::{sortPoints, Beam, DAdjUsize, DCoordMat, Mapping, Point, RigidBody};
 
 type TPoint = (f64, f64);
 
@@ -59,6 +60,17 @@ fn jarvis_march(gift: &[TPoint]) -> Option<Vec<TPoint>> {
     }
 
     Some(hull)
+}
+
+fn centroid(vec: &Vec<TPoint>) -> TPoint {
+    let mut cen = (0.0, 0.0);
+    for i in vec {
+        cen.0 += i.0;
+        cen.1 += i.1;
+    }
+    cen.0 = cen.0 / (vec.len() as f64);
+    cen.1 = cen.1 / (vec.len() as f64);
+    return cen;
 }
 
 static PALETTE: [RGBColor; 10] = [
@@ -137,6 +149,7 @@ fn draw_rigid_bodies<DB: DrawingBackend>(
     }
     rigid.swap(erd, end);
     rigid.remove(end);
+    //
     // hier ist keine Erdscheibe mehr drin
     let rigidbodies = rigid;
     let mapping = Mapping {
@@ -161,6 +174,7 @@ fn draw_rigid_bodies<DB: DrawingBackend>(
                 line_points.push((p.x, p.y))
             }
         };
+        let centroid = centroid(&line_points);
         drawing_area
             .draw(&Polygon::new(
                 line_points.clone(),
@@ -170,6 +184,18 @@ fn draw_rigid_bodies<DB: DrawingBackend>(
         drawing_area
             .draw(&PathElement::new(line_points, PALETTE[palette_iter]))
             .unwrap();
+
+        drawing_area
+            .draw(
+                &(EmptyElement::at((centroid.0, centroid.1))
+                    + Circle::new((0, 0), 3, ShapeStyle::from(&PALETTE[palette_iter]))
+                    + Text::new(
+                        format!("({:X})", Roman::from((palette_iter + 1) as i16)),
+                        (10, 0),
+                        ("sans-serif", 15.0).into_font(),
+                    )),
+            )
+            .unwrap();
         palette_iter = (palette_iter + 1) % (10);
     }
 }
@@ -178,27 +204,50 @@ fn draw_pole<DB: DrawingBackend>(
     drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
     pole: &DCoordMat,
 ) {
+    let mut visited_coords = Vec::new();
     let mut palette_iter = 0;
     for i in 0..pole.shape().0 {
-        for j in 0..pole.shape().1 {
+        for j in i..pole.shape().1 {
             let x = pole[(i, j)].x;
             let y = pole[(i, j)].y;
             let infty = pole[(i, j)].is_at_infinity;
             if i == j && !infty {
                 drawing_area
-                    .draw(&Circle::new(
-                        (x, y),
-                        5,
-                        Into::<ShapeStyle>::into(PALETTE[palette_iter]).filled(),
-                    ))
+                    .draw(
+                        &(EmptyElement::at((x, y))
+                            + Circle::new(
+                                (0, 0),
+                                5,
+                                ShapeStyle::from(&PALETTE[palette_iter]).filled(),
+                            )
+                            + Text::new(
+                                format!("({})", i),
+                                (10, 0),
+                                ("sans-serif", 15.0).into_font(),
+                            )),
+                    )
                     .unwrap();
             } else if !infty {
+                let mut offset = 0;
+
+                offset += visited_coords
+                    .iter()
+                    .filter(|&n: &&(f64, f64)| {
+                        ((n.0 - x).powi(2) + (n.1 - y).powi(2)).sqrt() < 16e-14
+                    })
+                    .count();
+
+                visited_coords.push((x, y));
                 drawing_area
-                    .draw(&Circle::new(
-                        (x, y),
-                        3,
-                        Into::<ShapeStyle>::into(&BLUE).filled(),
-                    ))
+                    .draw(
+                        &(EmptyElement::at((x, y))
+                            + Circle::new((0, 0), 3, ShapeStyle::from(&BLUE).filled())
+                            + Text::new(
+                                format!("({},{})", i, j),
+                                (-20 as i32, -20 - 20 * offset as i32),
+                                ("sans-serif", 15.0).into_font(),
+                            )),
+                    )
                     .unwrap();
             }
             if i == j {
@@ -238,12 +287,14 @@ pub fn visualise(
         }
     }
     //
+    let max = max_x.max(max_y);
+    let min = min_x.min(min_y);
     let margin = 40;
     let root = BitMapBackend::new(path, (res_x, res_y))
         .into_drawing_area()
         .apply_coord_spec(Cartesian2d::<RangedCoordf64, RangedCoordf64>::new(
-            min_x..max_x,
-            max_y..min_y,
+            min..max,
+            max..min,
             (40..(res_x - margin) as i32, 40..(res_y - margin) as i32),
         ));
     root.fill(&WHITE).unwrap();
@@ -252,38 +303,6 @@ pub fn visualise(
     draw_beams(&root, points, beams);
     draw_rigid_bodies(&root, points, rigidbodies, erdscheibe);
     draw_pole(&root, &polplan)
-
-    /*
-
-    for i in 0..rigid.len() - 1 {
-        for j in i..rigid.len() - 1 {
-            let x = pole[(i, j)].x;
-            let y = pole[(i, j)].y;
-            let infty = pole[(i, j)].is_at_infinity;
-            if i == j && !infty {
-                root.draw(&Circle::new(
-                    (
-                        (x * scale_x) as i32 + margin,
-                        (res_y as i32 - ((y * scale_y) as i32 + margin)),
-                    ),
-                    2,
-                    Into::<ShapeStyle>::into(&RED).filled(),
-                ))
-                .unwrap();
-            } else if !infty {
-                root.draw(&Circle::new(
-                    (
-                        (x * scale_x) as i32 + margin,
-                        (res_y as i32 - ((y * scale_y) as i32 + margin)),
-                    ),
-                    1,
-                    Into::<ShapeStyle>::into(&BLUE).filled(),
-                ))
-                .unwrap();
-            }
-        }
-    }
-    */
 
     // And if we want SVG backend
     // let backend = SVGBackend::new("output.svg", (800, 600));

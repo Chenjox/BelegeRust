@@ -1,10 +1,14 @@
 mod visualisation;
 
-use nalgebra::{Dynamic, OMatrix};
+use nalgebra::{Dynamic, OMatrix, OVector, SMatrix, SVector};
 use std::fmt;
 use visualisation::visualise;
 
 type DAdjUsize = OMatrix<usize, Dynamic, Dynamic>;
+type DMatrixf64 = OMatrix<f64, Dynamic, Dynamic>;
+type DVectorf64 = OVector<f64, Dynamic>;
+type S2x2 = SMatrix<f64, 2, 2>;
+type S2 = SVector<f64, 2>;
 
 #[derive(Debug, Clone)]
 pub struct Point {
@@ -23,6 +27,18 @@ pub struct Pol {
 
 #[derive(Debug, Clone)]
 struct Polschlussregel([usize; 2], [usize; 2], [usize; 2]);
+
+impl Polschlussregel {
+    fn first(&self) -> (usize, usize) {
+        return (self.0[0], self.0[1]);
+    }
+    fn second(&self) -> (usize, usize) {
+        return (self.1[0], self.1[1]);
+    }
+    fn result(&self) -> (usize, usize) {
+        return (self.2[0], self.2[1]);
+    }
+}
 
 impl fmt::Display for Pol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -57,7 +73,8 @@ impl Pol {
 }
 impl Pol {
     fn infer(p1: &Pol, p2: &Pol, q1: &Pol, q2: &Pol) -> Self {
-        let a_stuetz = if p1.is_at_infinity {
+        let a_stuetz = if p1.is_at_infinity && !p2.is_at_infinity {
+            // Annahme, p1 oder p2 sind endlich
             (p2.x, p2.y)
         } else {
             (p1.x, p1.y)
@@ -70,7 +87,7 @@ impl Pol {
             (p1.x - p2.x, p1.y - p2.y)
         };
 
-        let b_stuetz = if q1.is_at_infinity {
+        let b_stuetz = if q1.is_at_infinity && !q2.is_at_infinity {
             (q2.x, q2.y)
         } else {
             (q1.x, q1.y)
@@ -83,21 +100,42 @@ impl Pol {
             (q1.x - q2.x, q1.y - q2.y)
         };
 
-        let det = -a_richtung.0 * b_richtung.1 + a_richtung.1 * b_richtung.0;
-        if det.abs() > 1e-16_f64 {
-            let fx = b_stuetz.0 - a_stuetz.0;
-            let fy = b_stuetz.1 - a_stuetz.1;
+        let mut mat = S2x2::zeros();
+        let mut bvec = S2::zeros();
 
-            let s = 1.0 / det * (-b_richtung.1 * fx - a_richtung.1 * fy);
+        mat[(0, 0)] = -a_richtung.1;
+        mat[(0, 1)] = a_richtung.0;
+        mat[(1, 0)] = -b_richtung.1;
+        mat[(1, 1)] = b_richtung.0;
 
-            let new_x = b_stuetz.0 + s * b_richtung.0;
-            let new_y = b_stuetz.1 + s * b_richtung.1;
-            return Pol::new(false, new_x, new_y);
+        bvec[0] = a_stuetz.0 * mat[(0, 0)] + a_stuetz.1 * mat[(0, 1)];
+        bvec[1] = b_stuetz.0 * mat[(1, 0)] + b_stuetz.1 * mat[(1, 1)];
+
+        let det = mat.determinant();
+
+        if det.abs() != 0.0 {
+            let new = mat.full_piv_lu().solve(&bvec).unwrap();
+            return Pol::new(false, new[0], new[1]);
         } else {
             let new_x = b_richtung.0;
             let new_y = b_richtung.1;
+            //println!("{},{},{},{}, [{},{}]",p1,p2,q1,q2,new_x,new_y);
             return Pol::new(true, new_x, new_y);
         }
+    }
+
+    fn distance(&self, other: &Pol) -> f64 {
+        if !self.is_at_infinity && !other.is_at_infinity {
+            return ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt();
+        } else {
+            return f64::INFINITY;
+        }
+    }
+
+    fn is_between(&self, other: &Pol, another: &Pol) -> bool {
+        return ((!other.is_at_infinity && other.is_at_infinity)
+            || (other.is_at_infinity && !other.is_at_infinity))
+            || (other.x..=another.x).contains(&self.x) && (other.y..=another.y).contains(&self.y);
     }
 }
 
@@ -512,12 +550,10 @@ fn get_adjacency_matrix(pvec: &Vec<Point>, sortVec: &Vec<usize>, bvec: &Vec<Beam
     //println!("{}",adj_mat);
     return adj_mat;
 }
-
-// Aufstellen des Polplans
-fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) -> DCoordMat {
-    let mapping = Mapping {
-        map: sortPoints(&points),
-    };
+pub fn filter_erdscheibe_ans_ende(
+    bodies: &Vec<RigidBody>,
+    erdscheibe: &RigidBody,
+) -> Vec<RigidBody> {
     let mut rigid = bodies.clone();
     let end = rigid.len() - 1;
     // finden der Erdscheibe,
@@ -536,6 +572,16 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         // tauschen der Erdscheibe ans ende
     }
     rigid.swap(erd, end);
+    //rigid.remove(end);
+    return rigid;
+}
+// Aufstellen des Polplans
+fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) -> DCoordMat {
+    let mapping = Mapping {
+        map: sortPoints(&points),
+    };
+    let mut rigid = filter_erdscheibe_ans_ende(bodies, erdscheibe);
+    let end = rigid.len() - 1;
 
     // Im Unendlichen?, x, y, größe Abzüglich der erdscheibe
     let mut mat = DCoordMat::from_element(
@@ -618,7 +664,18 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
             }
         }
     }
-
+    //println!("{}",mat);
+    let anz_reg = regeln.len();
+    let mut anz_remov = 0;
+    for re in 0..anz_reg {
+        let re = re - anz_remov;
+        if mat[regeln[re].result()].exists() // vllt existiert der schon
+                || (mat[regeln[re].first()].is_same(&mat[regeln[re].second()]) && (regeln[re].first().0 == regeln[re].first().1 || regeln[re].second().0 == regeln[re].second().1))
+        {
+            regeln.remove(re);
+            anz_remov += 1;
+        }
+    }
     loop {
         if regeln.len() == 0 {
             break;
@@ -641,26 +698,38 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                                             // Inferiere den Pol
                                             // Regeln sind ja schön, aber hier brauch ich ne Fallunterscheidung
                                             // Wenn (i,j) + (j,k) schon aufeinaner liegen, dann ist der dritte Pol auch dort!
-        let newpol_i = regel1.2[0];
-        let newpol_j = regel1.2[1];
-        if mat[(regel1.0[0], regel1.0[1])].is_same(&mat[(regel1.1[0], regel1.1[1])]) {
-            mat[(newpol_i, newpol_j)] = mat[(regel1.0[0], regel1.0[1])].clone();
-            mat[(newpol_j, newpol_i)] = mat[(regel1.0[0], regel1.0[1])].clone();
-        } else if mat[(regel2.0[0], regel2.0[1])].is_same(&mat[(regel2.1[0], regel2.1[1])]) {
-            mat[(newpol_i, newpol_j)] = mat[(regel2.0[0], regel2.0[1])].clone();
-            mat[(newpol_j, newpol_i)] = mat[(regel2.0[0], regel2.0[1])].clone();
+        let newpol_i = regel1.result().0;
+        let newpol_j = regel1.result().1;
+        let new_pol = if mat[regel1.first()].is_same(&mat[regel1.second()]) {
+            // Hauptpole sind zu erkennen!
+            if regel1.first().0 != regel1.first().1 && regel1.second().0 != regel1.second().1 {
+                // Es darf kein Hauptpol sein!
+                mat[regel1.first()].clone()
+            } else {
+                continue;
+            }
+        } else if mat[regel2.first()].is_same(&mat[regel2.second()]) {
+            // Hauptpole sind zu erkennen!
+            if regel2.first().0 != regel2.first().1 && regel2.second().0 != regel2.second().1 {
+                // Es darf kein Hauptpol sein!
+                mat[regel1.first()].clone()
+            } else {
+                continue;
+            }
         } else {
-            let new_pol = Pol::infer(
-                &mat[(regel1.0[0], regel1.0[1])],
-                &mat[(regel1.1[0], regel1.1[1])],
-                &mat[(regel2.0[0], regel2.0[1])],
-                &mat[(regel2.1[0], regel2.1[1])],
-            );
-
-            //println!("[{},{}] = {}", newpol_i, newpol_j, new_pol);
-            mat[(newpol_i, newpol_j)] = new_pol.clone();
-            mat[(newpol_j, newpol_i)] = new_pol;
-        }
+            Pol::infer(
+                &mat[regel1.first()],
+                &mat[regel1.second()],
+                &mat[regel2.first()],
+                &mat[regel2.second()],
+            )
+        };
+        println!(
+            "{:?},{:?} -> [{},{}] = {}",
+            regel1, regel2, newpol_i, newpol_j, new_pol
+        );
+        mat[(newpol_i, newpol_j)] = new_pol.clone();
+        mat[(newpol_j, newpol_i)] = new_pol;
         // neue Schlussregeln
         for i in 0..anzahl_pole {
             // Iterieren durch alle möglichen
@@ -691,9 +760,10 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         let mut anz_remov = 0;
         for re in 0..anz_reg {
             let re = re - anz_remov;
-            if regeln[re].2[0] == newpol_i && regeln[re].2[1] == newpol_j
-                || regeln[re].2[0] == newpol_j && regeln[re].2[1] == newpol_i
-                || mat[(regeln[re].2[0], regeln[re].2[1])].exists()
+            if regeln[re].result().0 == newpol_i && regeln[re].result().1 == newpol_j
+                || regeln[re].result().0 == newpol_j && regeln[re].result().1 == newpol_i //gefundene Nebenpole
+                || mat[regeln[re].result()].exists() // vllt existiert der schon
+                || (mat[regeln[re].first()].is_same(&mat[regeln[re].second()]) && (regeln[re].first().0 == regeln[re].first().1 || regeln[re].second().0 == regeln[re].second().1))
             {
                 regeln.remove(re);
                 anz_remov += 1;
@@ -702,6 +772,55 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
     }
     //println!("{}", mat);
     return mat;
+}
+
+fn kinematik(polplan: &DCoordMat, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) {
+    let f = filter_erdscheibe_ans_ende(bodies, erdscheibe);
+
+    let mut lin_op = DMatrixf64::zeros(polplan.shape().0, polplan.shape().0);
+    for unabhaengig in 0..polplan.shape().0 {
+        for i in 0..polplan.shape().0 {
+            if i != unabhaengig {
+                let hp1 = &polplan[(unabhaengig, unabhaengig)];
+                let np = &polplan[(unabhaengig, i)];
+                let hp2 = &polplan[(i, i)];
+                if np.is_at_infinity {
+                    //println!("Nebenpol im Unendlichen!");
+                    lin_op[(i, unabhaengig)] = 1.0;
+                } else if hp1.is_at_infinity {
+                    // HP 1 ist im Unendlichen
+                    // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
+                    lin_op[(i, unabhaengig)] = 0.0;
+                } else if hp2.is_at_infinity {
+                    lin_op[(i, unabhaengig)] = 0.0;
+                } else if np.is_same(hp1) || np.is_same(hp2) {
+                    // Jetzt können die nur noch koplanar sein!
+                    lin_op[(i, unabhaengig)] = 0.0;
+                } else {
+                    let sign = if np.is_between(hp1, hp2) { -1.0 } else { 1.0 };
+                    let phi_m = sign * np.distance(hp1) / np.distance(hp2);
+                    lin_op[(i, unabhaengig)] = phi_m;
+                }
+            } else {
+                if polplan[(unabhaengig, unabhaengig)].is_at_infinity {
+                    // Im Unendlichen ergibt ein finiter Wert keinen Sinn!
+                    lin_op[(unabhaengig, unabhaengig)] = 0.0;
+                } else {
+                    lin_op[(unabhaengig, unabhaengig)] = 1.0;
+                }
+            }
+        }
+    }
+    println!("{}", lin_op);
+    for j in 0..polplan.shape().0 {
+        let mut vec = DVectorf64::zeros(lin_op.shape().0);
+        vec[j] = 1.0;
+        // Eigenvektorsuche
+
+        vec = &lin_op * vec;
+
+        println!("{}", vec);
+    }
 }
 
 fn main() {
@@ -717,6 +836,8 @@ fn main() {
     let rigid = get_rigid_bodies(&v, &kant, &erd);
 
     let pole = polplan(&v, &rigid, &erd);
+
+    kinematik(&pole, &rigid, &erd);
 
     visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
 }
