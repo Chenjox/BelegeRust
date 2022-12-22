@@ -648,57 +648,73 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                                      //Nebenpolbedingung 1 (HP HP)
                 for k in 0..anzahl_pole {
                     // (HP HP)
-                    if i != k && mat[(k, k)].exists() && !mat[(i,k)].exists() { // HP HP -> NP
+                    if i != k && mat[(k, k)].exists() && !mat[(i, k)].exists() {
+                        // HP HP -> NP
                         mat_bed[(i, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
                         mat_bed[(k, i)] += 1;
                     }
-                    if i != k && mat[(k, i)].exists() && !mat[(k,k)].exists() { // HP NP -> HP
+                    if i != k && mat[(k, i)].exists() && !mat[(k, k)].exists() {
+                        // HP NP -> HP
                         mat_bed[(k, k)] += 1; // Wir können eine Aussage über den Hauptpol treffen
                     }
                 }
-            } else { // Es ist ein Nebenpol zu bestimmen
+            } else {
+                // Es ist ein Nebenpol zu bestimmen
                 // Erste Möglichkeit HP-HP-NP-NP
-                if mat[(i,i)].exists() && mat[(j,j)].exists() { // es existieren 2 Hauptpole
+                if mat[(i, i)].exists() && mat[(j, j)].exists() {
+                    // es existieren 2 Hauptpole
                     //finden der nebenpole
                     let mut kfinal = 0;
                     for k in 0..anzahl_pole {
-                        if mat[(i,k)].exists() && mat[(j,k)].exists() { // Ein NP Paar gefunden!
+                        if mat[(i, k)].exists() && mat[(j, k)].exists() {
+                            // Ein NP Paar gefunden!
                             kfinal = k;
                             break;
                         }
                     }
                     let k = kfinal;
-                    let new_pol = Pol::infer(&mat[(i, i)], &mat[(j, j)], &mat[(i, k)], &mat[(j, k)]);
+                    let new_pol =
+                        Pol::infer(&mat[(i, i)], &mat[(j, j)], &mat[(i, k)], &mat[(j, k)]);
                     println!("{}", new_pol);
                     mat[(i, j)] = new_pol.clone();
                     mat[(j, i)] = new_pol;
                     mat_bed[(i, j)] = 0;
                     mat_bed[(j, i)] = 0;
-                } else { // zweite Möglichkeit NP-NP-NP-NP
+                } else {
+                    // zweite Möglichkeit NP-NP-NP-NP
                     // Der erste Index der erst zu inferierenden
-                    let mut ktupel = (0,0);
+                    let mut ktupel = (0, 0);
                     'kloop: for kj in 0..anzahl_pole {
-                        if i != kj && mat[(i,kj)].exists() { // potentiell erster NP des ersten Paars gefunden!
+                        if i != kj && mat[(i, kj)].exists() {
+                            // potentiell erster NP des ersten Paars gefunden!
                             for ki in 0..anzahl_pole {
-                                if ki != kj && mat[(ki,kj)].exists() { // erstes NP Paar gefunden!
-                                    ktupel = (ki,kj);
+                                if ki != kj && mat[(ki, kj)].exists() {
+                                    // erstes NP Paar gefunden!
+                                    ktupel = (ki, kj);
                                     break 'kloop;
                                 }
                             }
                         }
                     }
-                    let mut ltupel = (0,0);
+                    let mut ltupel = (0, 0);
                     'lloop: for li in 0..anzahl_pole {
-                        if j != li && mat[(li,j)].exists() { // potentiell erster NP des zweiten Paars gefunden!
+                        if j != li && mat[(li, j)].exists() {
+                            // potentiell erster NP des zweiten Paars gefunden!
                             for lj in 0..anzahl_pole {
-                                if li != lj && mat[(li,lj)].exists() { // zweistes NP Paar gefunden!
-                                    ktupel = (li,lj);
+                                if li != lj && mat[(li, lj)].exists() {
+                                    // zweistes NP Paar gefunden!
+                                    ktupel = (li, lj);
                                     break 'lloop;
                                 }
                             }
                         }
                     }
-                    let new_pol = Pol::infer(&mat[(i, ktupel.1)], &mat[ktupel], &mat[(ltupel.0, j)], &mat[ltupel]);
+                    let new_pol = Pol::infer(
+                        &mat[(i, ktupel.1)],
+                        &mat[ktupel],
+                        &mat[(ltupel.0, j)],
+                        &mat[ltupel],
+                    );
                     println!("{}", new_pol);
                     mat[(i, j)] = new_pol.clone();
                     mat[(j, i)] = new_pol;
@@ -708,19 +724,23 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                 // Nebenpol wurde gefunden!
                 // Überarbeiten der mat_bed
                 // (HP NP)
-                if mat[(i, i)].exists() && !mat[(j, j)].exists(){ // (ij) + (i) -> (j)
+                if mat[(i, i)].exists() && !mat[(j, j)].exists() {
+                    // (ij) + (i) -> (j)
                     mat_bed[(j, j)] += 1;
                 }
-                if mat[(j, j)].exists() && !mat[(i, i)].exists() { // (ij) + (i) -> (j)
+                if mat[(j, j)].exists() && !mat[(i, i)].exists() {
+                    // (ij) + (i) -> (j)
                     mat_bed[(i, i)] += 1;
                 }
                 // (NP NP)
                 for k in 0..anzahl_pole {
-                    if k != i && k != j && mat[(i, k)].exists() && !mat[(j, k)].exists(){ // (ij) + (ik) -> GO(ik)
+                    if k != i && k != j && mat[(i, k)].exists() && !mat[(j, k)].exists() {
+                        // (ij) + (ik) -> GO(ik)
                         mat_bed[(j, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
                         mat_bed[(k, j)] += 1;
                     }
-                    if k != i && k != j && mat[(j, k)].exists() && !mat[(i, k)].exists(){ // (ij) + (ik) -> GO(ik)
+                    if k != i && k != j && mat[(j, k)].exists() && !mat[(i, k)].exists() {
+                        // (ij) + (ik) -> GO(ik)
                         mat_bed[(i, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
                         mat_bed[(k, i)] += 1;
                     }
