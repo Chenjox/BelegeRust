@@ -21,7 +21,11 @@ struct Pol {
 
 impl fmt::Display for Pol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}, {}, {})", self.is_at_infinity, self.x, self.y)
+        if self.x.is_nan() {
+            write!(f, "()")
+        } else {
+            write!(f, "({}, {}, {})", self.is_at_infinity, self.x, self.y)
+        }
     }
 }
 
@@ -35,6 +39,51 @@ impl Pol {
     }
     fn exists(&self) -> bool {
         return !self.x.is_nan() && !self.y.is_nan();
+    }
+}
+impl Pol {
+    fn infer(p1: &Pol, p2: &Pol, q1: &Pol, q2: &Pol) -> Self {
+        let a_stuetz = if p1.is_at_infinity {
+            (p2.x, p2.y)
+        } else {
+            (p1.x, p1.y)
+        };
+        let a_richtung = if p1.is_at_infinity {
+            (p1.x, p1.y)
+        } else if p2.is_at_infinity {
+            (p2.x, p2.y)
+        } else {
+            (p1.x - p2.x, p1.y - p2.y)
+        };
+
+        let b_stuetz = if q1.is_at_infinity {
+            (q2.x, q2.y)
+        } else {
+            (q1.x, q1.y)
+        };
+        let b_richtung = if q1.is_at_infinity {
+            (q1.x, q1.y)
+        } else if q2.is_at_infinity {
+            (q2.x, q2.y)
+        } else {
+            (q1.x - q2.x, q1.y - q2.y)
+        };
+
+        let det = -a_richtung.0 * b_richtung.1 + a_richtung.1 * b_richtung.0;
+        if det.abs() > 1e-16_f64 {
+            let fx = b_stuetz.0 - a_stuetz.0;
+            let fy = b_stuetz.1 - a_stuetz.1;
+
+            let s = 1.0 / det * (-b_richtung.1 * fx - a_richtung.1 * fy);
+
+            let new_x = b_stuetz.0 + s * b_richtung.0;
+            let new_y = b_stuetz.1 + s * b_richtung.1;
+            return Pol::new(false, new_x, new_y);
+        } else {
+            let new_x = b_richtung.0;
+            let new_y = b_richtung.1;
+            return Pol::new(true, new_x, new_y);
+        }
     }
 }
 
@@ -458,6 +507,7 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         bodies.len() - 1,
         Pol::new(false, f64::NAN, f64::NAN),
     );
+
     {
         let connect_points = get_rigid_body_connectivity(points, &rigid);
         // Mittels der Erdscheibe werden die offenkundigen Hauptpole bestimmt!
@@ -495,6 +545,7 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                 // mindestens 2 Elemente müssen enthalten sein
                 for k in j + 1..con_bodies.len() {
                     mat[(con_bodies[j], con_bodies[k])] = Pol::new(false, po.x, po.y);
+                    mat[(con_bodies[k], con_bodies[j])] = Pol::new(false, po.x, po.y);
                 }
             }
         }
@@ -502,7 +553,199 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         println!("{:?}", connect_points);
     }
     println!("{}", mat);
-    // Jetzt beginnt die Iteration
+    // Matrix der Bedingungen
+    let anzahl_pole = bodies.len() - 1;
+    let mut mat_bed = DAdjUsize::from_element(anzahl_pole, anzahl_pole, 0);
+    let mut best_kandidates = Vec::new();
+
+    for i in 0..anzahl_pole {
+        //Nebenpolbedingung 1 (HP HP)
+        for j in i + 1..anzahl_pole {
+            // (HP HP)
+            if i != j && mat[(i, i)].exists() && mat[(j, j)].exists() {
+                // Zwei Hauptpole sind bekannt
+                mat_bed[(i, j)] += 1; // Wir können eine Aussage über den Nebenpol treffen
+                mat_bed[(j, i)] += 1; // Wir können eine Aussage über den Nebenpol treffen
+            }
+        }
+        for j in i + 1..anzahl_pole {
+            // (NP NP)
+            if i != j && mat[(i, j)].exists() {
+                for k in j + 1..anzahl_pole {
+                    if mat[(i, j)].exists() && mat[(i, k)].exists() {
+                        mat_bed[(k, j)] += 1; // Wir können eine Aussage über den Nebenpol treffen
+                        mat_bed[(j, k)] += 1;
+                    }
+                }
+            }
+        }
+        for j in 0..anzahl_pole {
+            //Hauptpolbedingungen (HPNP)
+            if mat[(i, i)].exists() && i != j {
+                // Der Hauptpol ist bekannt
+                // Wir haben also einen Nebenpol
+                if mat[(i, j)].exists() {
+                    // Der Nebenpol ist bekannt
+                    mat_bed[(j, j)] += 1; // Wir können eine Aussage über den Hauptpol treffen
+                }
+            }
+        }
+    }
+    for i in 0..anzahl_pole {
+        for j in i..anzahl_pole {
+            if mat_bed[(i, j)] > 1 {
+                best_kandidates.push((i, j));
+            }
+        }
+    }
+    // Nebenpolbedingungen ()
+    println!("{}", mat_bed);
+    println!("{:?}", best_kandidates);
+
+    loop {
+        // Finden des besten kandidaten
+        if let Some((i, j)) = best_kandidates.pop() {
+            // Ist es ein Haupt oder nebenpol?
+            if i == j {
+                // Also ein Hauptpol
+                // Finden des ersten pols mit zulässigem Hauptpol und Nebenpol
+                let mut kfinal = 0;
+                let mut lfinal = 0;
+                for k in 0..anzahl_pole - 1 {
+                    if k < i {
+                        if mat[(k, k)].exists() && mat[(i, k)].exists() {
+                            kfinal = k;
+                            break;
+                        }
+                    } else {
+                        if mat[(k + 1, k + 1)].exists() && mat[(i, k + 1)].exists() {
+                            kfinal = k + 1;
+                            break;
+                        }
+                    }
+                }
+                for l in kfinal + 1..anzahl_pole {
+                    if l < j {
+                        if mat[(l, l)].exists() && mat[(j, l)].exists() {
+                            lfinal = l;
+                            break;
+                        }
+                    } else {
+                        if mat[(l + 1, l + 1)].exists() && mat[(j, l + 1)].exists() {
+                            lfinal = l + 1;
+                            break;
+                        }
+                    }
+                } // kfinal und lfinal gefunden!
+                let k = kfinal;
+                let l = lfinal;
+                let new_pol = Pol::infer(&mat[(k, k)], &mat[(i, k)], &mat[(l, l)], &mat[(j, l)]);
+                println!("{}", new_pol);
+                mat[(i, j)] = new_pol;
+                mat_bed[(i, j)] = 0; // hier gibt es nichts mehr
+                                     // Ein neuer Hauptpol bei i und j!
+                                     // aktualisieren der Bedingungsmatrix
+                                     //Nebenpolbedingung 1 (HP HP)
+                for k in 0..anzahl_pole {
+                    // (HP HP)
+                    if i != k && mat[(k, k)].exists() && !mat[(i,k)].exists() { // HP HP -> NP
+                        mat_bed[(i, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
+                        mat_bed[(k, i)] += 1;
+                    }
+                    if i != k && mat[(k, i)].exists() && !mat[(k,k)].exists() { // HP NP -> HP
+                        mat_bed[(k, k)] += 1; // Wir können eine Aussage über den Hauptpol treffen
+                    }
+                }
+            } else { // Es ist ein Nebenpol zu bestimmen
+                // Erste Möglichkeit HP-HP-NP-NP
+                if mat[(i,i)].exists() && mat[(j,j)].exists() { // es existieren 2 Hauptpole
+                    //finden der nebenpole
+                    let mut kfinal = 0;
+                    for k in 0..anzahl_pole {
+                        if mat[(i,k)].exists() && mat[(j,k)].exists() { // Ein NP Paar gefunden!
+                            kfinal = k;
+                            break;
+                        }
+                    }
+                    let k = kfinal;
+                    let new_pol = Pol::infer(&mat[(i, i)], &mat[(j, j)], &mat[(i, k)], &mat[(j, k)]);
+                    println!("{}", new_pol);
+                    mat[(i, j)] = new_pol.clone();
+                    mat[(j, i)] = new_pol;
+                    mat_bed[(i, j)] = 0;
+                    mat_bed[(j, i)] = 0;
+                } else { // zweite Möglichkeit NP-NP-NP-NP
+                    // Der erste Index der erst zu inferierenden
+                    let mut ktupel = (0,0);
+                    'kloop: for kj in 0..anzahl_pole {
+                        if i != kj && mat[(i,kj)].exists() { // potentiell erster NP des ersten Paars gefunden!
+                            for ki in 0..anzahl_pole {
+                                if ki != kj && mat[(ki,kj)].exists() { // erstes NP Paar gefunden!
+                                    ktupel = (ki,kj);
+                                    break 'kloop;
+                                }
+                            }
+                        }
+                    }
+                    let mut ltupel = (0,0);
+                    'lloop: for li in 0..anzahl_pole {
+                        if j != li && mat[(li,j)].exists() { // potentiell erster NP des zweiten Paars gefunden!
+                            for lj in 0..anzahl_pole {
+                                if li != lj && mat[(li,lj)].exists() { // zweistes NP Paar gefunden!
+                                    ktupel = (li,lj);
+                                    break 'lloop;
+                                }
+                            }
+                        }
+                    }
+                    let new_pol = Pol::infer(&mat[(i, ktupel.1)], &mat[ktupel], &mat[(ltupel.0, j)], &mat[ltupel]);
+                    println!("{}", new_pol);
+                    mat[(i, j)] = new_pol.clone();
+                    mat[(j, i)] = new_pol;
+                    mat_bed[(i, j)] = 0;
+                    mat_bed[(j, i)] = 0;
+                }
+                // Nebenpol wurde gefunden!
+                // Überarbeiten der mat_bed
+                // (HP NP)
+                if mat[(i, i)].exists() && !mat[(j, j)].exists(){ // (ij) + (i) -> (j)
+                    mat_bed[(j, j)] += 1;
+                }
+                if mat[(j, j)].exists() && !mat[(i, i)].exists() { // (ij) + (i) -> (j)
+                    mat_bed[(i, i)] += 1;
+                }
+                // (NP NP)
+                for k in 0..anzahl_pole {
+                    if k != i && k != j && mat[(i, k)].exists() && !mat[(j, k)].exists(){ // (ij) + (ik) -> GO(ik)
+                        mat_bed[(j, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
+                        mat_bed[(k, j)] += 1;
+                    }
+                    if k != i && k != j && mat[(j, k)].exists() && !mat[(i, k)].exists(){ // (ij) + (ik) -> GO(ik)
+                        mat_bed[(i, k)] += 1; // Wir können eine Aussage über den Nebenpol treffen
+                        mat_bed[(k, i)] += 1;
+                    }
+                }
+            }
+        } else {
+            break;
+        }
+        let mut is_all_zero = true;
+        for i in 0..anzahl_pole {
+            for j in i..anzahl_pole {
+                if mat_bed[(i, j)] > 0 {
+                    is_all_zero = false;
+                }
+                if mat_bed[(i, j)] > 1 {
+                    best_kandidates.push((i, j));
+                }
+            }
+        }
+        if is_all_zero {
+            break;
+        }
+        //println!("{}", mat_bed);
+    }
+    println!("{}", mat);
 }
 
 fn main() {
