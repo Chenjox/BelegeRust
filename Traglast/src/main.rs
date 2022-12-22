@@ -32,11 +32,31 @@ impl Polschlussregel {
     fn first(&self) -> (usize, usize) {
         return (self.0[0], self.0[1]);
     }
+    fn first_is_hauptpol(&self) -> bool {
+        return self.0[0] == self.0[1];
+    }
     fn second(&self) -> (usize, usize) {
         return (self.1[0], self.1[1]);
     }
+    fn second_is_hauptpol(&self) -> bool {
+        return self.1[0] == self.1[1];
+    }
     fn result(&self) -> (usize, usize) {
         return (self.2[0], self.2[1]);
+    }
+    fn result_is_hauptpol(&self) -> bool {
+        return self.2[0] == self.2[1];
+    }
+    fn rule_type(&self) -> u8 {
+        return if self.first_is_hauptpol() && !self.second_is_hauptpol()
+            || !self.first_is_hauptpol() && self.second_is_hauptpol()
+        {
+            2
+        } else if self.first_is_hauptpol() && self.second_is_hauptpol() {
+            1
+        } else {
+            0
+        };
     }
 }
 
@@ -682,6 +702,7 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
         }
         let mut ig = 0;
         let mut jg = 0;
+        regeln.sort_by_key(|f| f.rule_type());
         for i in 0..regeln.len() {
             for j in i + 1..regeln.len() {
                 if regeln[i].2[0] == regeln[j].2[0] && regeln[i].2[1] == regeln[j].2[1] {
@@ -700,30 +721,13 @@ fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody)
                                             // Wenn (i,j) + (j,k) schon aufeinaner liegen, dann ist der dritte Pol auch dort!
         let newpol_i = regel1.result().0;
         let newpol_j = regel1.result().1;
-        let new_pol = if mat[regel1.first()].is_same(&mat[regel1.second()]) {
-            // Hauptpole sind zu erkennen!
-            if regel1.first().0 != regel1.first().1 && regel1.second().0 != regel1.second().1 {
-                // Es darf kein Hauptpol sein!
-                mat[regel1.first()].clone()
-            } else {
-                continue;
-            }
-        } else if mat[regel2.first()].is_same(&mat[regel2.second()]) {
-            // Hauptpole sind zu erkennen!
-            if regel2.first().0 != regel2.first().1 && regel2.second().0 != regel2.second().1 {
-                // Es darf kein Hauptpol sein!
-                mat[regel1.first()].clone()
-            } else {
-                continue;
-            }
-        } else {
-            Pol::infer(
-                &mat[regel1.first()],
-                &mat[regel1.second()],
-                &mat[regel2.first()],
-                &mat[regel2.second()],
-            )
-        };
+
+        let new_pol = Pol::infer(
+            &mat[regel1.first()],
+            &mat[regel1.second()],
+            &mat[regel2.first()],
+            &mat[regel2.second()],
+        );
         println!(
             "{:?},{:?} -> [{},{}] = {}",
             regel1, regel2, newpol_i, newpol_j, new_pol

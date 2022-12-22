@@ -221,7 +221,7 @@ fn draw_pole<DB: DrawingBackend>(
                                 ShapeStyle::from(&PALETTE[palette_iter]).filled(),
                             )
                             + Text::new(
-                                format!("({})", i),
+                                format!("({})", i + 1),
                                 (10, 0),
                                 ("sans-serif", 15.0).into_font(),
                             )),
@@ -243,7 +243,7 @@ fn draw_pole<DB: DrawingBackend>(
                         &(EmptyElement::at((x, y))
                             + Circle::new((0, 0), 3, ShapeStyle::from(&BLUE).filled())
                             + Text::new(
-                                format!("({},{})", i, j),
+                                format!("({},{})", i + 1, j + 1),
                                 (-20 as i32, -20 - 20 * offset as i32),
                                 ("sans-serif", 15.0).into_font(),
                             )),
