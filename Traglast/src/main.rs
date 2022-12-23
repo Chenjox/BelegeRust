@@ -1,7 +1,9 @@
 mod visualisation;
 
 use nalgebra::{Dynamic, OMatrix, OVector, SMatrix, SVector};
-use std::fmt;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::{fmt, fs::FileType};
 use visualisation::visualise;
 
 type DAdjUsize = OMatrix<usize, Dynamic, Dynamic>;
@@ -9,6 +11,12 @@ type DMatrixf64 = OMatrix<f64, Dynamic, Dynamic>;
 type DVectorf64 = OVector<f64, Dynamic>;
 type S2x2 = SMatrix<f64, 2, 2>;
 type S2 = SVector<f64, 2>;
+
+fn calculate_hash<T: Hash>(t: &T) -> u64 {
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
 
 #[derive(Debug, Clone)]
 pub struct Point {
@@ -25,10 +33,39 @@ pub struct Pol {
     pub y: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 struct Polschlussregel([usize; 2], [usize; 2], [usize; 2]);
 
 impl Polschlussregel {
+    fn new(first: (usize, usize), second: (usize, usize), result: (usize, usize)) -> Self {
+        let mut first_pair = if first.0 > first.1 {
+            [first.1, first.0]
+        } else {
+            [first.0, first.1]
+        };
+        let mut second_pair = if second.0 > second.1 {
+            [second.1, second.0]
+        } else {
+            [second.0, second.1]
+        };
+        let result = if result.0 > result.1 {
+            [result.1, result.0]
+        } else {
+            [result.0, result.1]
+        };
+        //
+        if first_pair[0] > second_pair[0] {
+            let temp = first_pair;
+            first_pair = second_pair;
+            second_pair = temp;
+        } else if first_pair[1] > second_pair[1] {
+            let temp = first_pair;
+            first_pair = second_pair;
+            second_pair = temp;
+        }
+
+        return Polschlussregel(first_pair, second_pair, result);
+    }
     fn first(&self) -> (usize, usize) {
         return (self.0[0], self.0[1]);
     }
@@ -88,6 +125,15 @@ impl Pol {
         return !self.x.is_nan() && !self.y.is_nan();
     }
     fn is_same(&self, other: &Pol) -> bool {
+        if (!self.is_at_infinity && other.is_at_infinity)
+            || (!self.is_at_infinity && other.is_at_infinity)
+        {
+            return false;
+        } // einer unendlich, der andere nicht
+        if self.is_at_infinity && other.is_at_infinity {
+            // beide unendlich
+            return (self.x * other.y - other.y * self.x).abs() < 1e16;
+        }
         return (self.x - other.x).abs() < 1e-16 && (self.y - other.y).abs() < 1e-16;
     }
 }
@@ -155,7 +201,10 @@ impl Pol {
     fn is_between(&self, other: &Pol, another: &Pol) -> bool {
         return ((!other.is_at_infinity && other.is_at_infinity)
             || (other.is_at_infinity && !other.is_at_infinity))
-            || (other.x..=another.x).contains(&self.x) && (other.y..=another.y).contains(&self.y);
+            || ((other.x..=another.x).contains(&self.x)
+                || (another.x..=other.x).contains(&self.x))
+                && ((other.y..=another.y).contains(&self.y)
+                    || (another.y..=other.y).contains(&self.y));
     }
 }
 
@@ -374,9 +423,9 @@ fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
         nplast: 1.0,
     });
 
-    kant.swap_remove(3);
+    //kant.swap_remove(3);
     kant.swap_remove(4);
-    //kant.swap_remove(7);
+    kant.swap_remove(7);
     kant.swap_remove(27);
 
     return (v, kant);
@@ -450,48 +499,23 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) ->
 
     // alle Rigidbodys zusammenführen
     //println!("{:?}\n", rigid);
-    let rgid_len = rigid.len();
 
-    let mut cur_i = 0;
-    loop {
-        let mut has_changed = false;
+    for i in 0..rigid.len() {
         let mut anz_rem = 0;
-        if cur_i < rigid.len() - 1 {
+        for cur_i in 0..rigid.len() - 1 {
+            let cur_i = if cur_i > anz_rem {
+                cur_i - anz_rem
+            } else {
+                continue;
+            };
             for j in 1..rigid.len() - cur_i {
-                if rigid[cur_i].is_joined_with(&rigid[cur_i + j - anz_rem]) {
-                    let bod2 = rigid.remove(cur_i + j - anz_rem);
-                    has_changed = has_changed || true;
+                if j > anz_rem && rigid[cur_i].is_joined_with(&rigid[cur_i + j - anz_rem]) {
+                    polplan_join_bodies(cur_i, cur_i + j - anz_rem, &mut rigid);
                     anz_rem += 1;
-                    rigid[cur_i] = rigid[cur_i].join_with(bod2);
                 }
             }
         }
-        if !has_changed {
-            break;
-        }
-        cur_i += 1;
     }
-    let mut cur_i = 0;
-    loop {
-        let mut has_changed = false;
-        let mut anz_rem = 0;
-        if cur_i < rigid.len() - 1 {
-            for j in 1..rigid.len() - cur_i {
-                if rigid[cur_i].is_joined_with(&rigid[cur_i + j - anz_rem]) {
-                    let bod2 = rigid.remove(cur_i + j - anz_rem);
-                    has_changed = has_changed || true;
-                    anz_rem += 1;
-                    rigid[cur_i] = rigid[cur_i].join_with(bod2);
-                }
-            }
-        }
-        if !has_changed {
-            break;
-        }
-        cur_i += 1;
-    }
-    //println!("{:?}\n", rigid);
-
     // Und einzelne Kanten zu Rigidbodys hinzufügen
     for i in kant_not {
         let from = kant[i].from;
@@ -595,191 +619,286 @@ pub fn filter_erdscheibe_ans_ende(
     //rigid.remove(end);
     return rigid;
 }
-// Aufstellen des Polplans
-fn polplan(points: &Vec<Point>, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) -> DCoordMat {
-    let mapping = Mapping {
-        map: sortPoints(&points),
-    };
-    let mut rigid = filter_erdscheibe_ans_ende(bodies, erdscheibe);
+/*
+    Alle offenkundigen Hauptpole werden bestimmt.
+    Die Erdscheibe ist bereits am Ende der Liste
+*/
+fn get_trivial_hauptpole(
+    matrix: &mut DCoordMat,
+    rigid: &Vec<RigidBody>,
+    points: &Vec<Point>,
+) -> (bool, usize) {
+    let connect_points = get_rigid_body_connectivity(points, &rigid);
+    // Mittels der Erdscheibe werden die offenkundigen Hauptpole bestimmt!
     let end = rigid.len() - 1;
-
-    // Im Unendlichen?, x, y, größe Abzüglich der erdscheibe
-    let mut mat = DCoordMat::from_element(
-        bodies.len() - 1,
-        bodies.len() - 1,
-        Pol::new(false, f64::NAN, f64::NAN),
-    );
-
-    {
-        let connect_points = get_rigid_body_connectivity(points, &rigid);
-        // Mittels der Erdscheibe werden die offenkundigen Hauptpole bestimmt!
-        let erd = end;
-        for i in 0..connect_points.len() {
-            let con_bodies = &connect_points[i].1;
-            // First pass, ist die Erdscheibe enthalten?
-            let mut is_erde = false;
-            for j in 0..con_bodies.len() {
-                if con_bodies[j] == erd {
-                    is_erde = true;
-                }
+    let erd = end;
+    for i in 0..connect_points.len() {
+        let con_bodies = &connect_points[i].1;
+        // First pass, ist die Erdscheibe enthalten?
+        let mut is_erde = false;
+        for j in 0..con_bodies.len() {
+            if con_bodies[j] == erd {
+                is_erde = true;
             }
-            if is_erde {
-                for j in 0..con_bodies.len() {
-                    if con_bodies[j] != erd {
-                        let po = &points[connect_points[i].0];
-                        if !mat[(con_bodies[j], con_bodies[j])].exists() {
-                            mat[(con_bodies[j], con_bodies[j])] = Pol::new(false, po.x, po.y);
-                        } else {
-                            println!("Widerspruch im Polplan gefunden");
-                        }
+        }
+        if is_erde {
+            for j in 0..con_bodies.len() {
+                if con_bodies[j] != erd {
+                    let po = &points[connect_points[i].0];
+                    let npol = Pol::new(false, po.x, po.y);
+                    if matrix[(con_bodies[j], con_bodies[j])].exists()
+                        && !matrix[(con_bodies[j], con_bodies[j])].is_same(&npol)
+                    {
+                        println!("Widerspruch im Hauptpol {}", con_bodies[j]);
+                        return (false, con_bodies[j]);
+                    } else {
+                        matrix[(con_bodies[j], con_bodies[j])] = npol;
                     }
                 }
             }
         }
+    }
+    return (true, usize::MAX);
+}
+
+fn get_trivial_nebenpole(
+    matrix: &mut DCoordMat,
+    rigid: &Vec<RigidBody>,
+    points: &Vec<Point>,
+) -> (bool, usize, usize) {
+    let end = rigid.len() - 1;
+    let connect_points = {
+        let mut rigid = rigid.clone();
         rigid.remove(end);
-        let rigid = rigid;
-        // Jetzt die Offenkundigen Nebenpole
-        let connect_points = get_rigid_body_connectivity(points, &rigid);
-        //println!("{:?}", rigid);
-        //println!("{:?}", connect_points);
-        for i in 0..connect_points.len() {
-            let con_bodies = &connect_points[i].1; // alle indezes der verbundenen Rigidbodies
-            let po = &points[connect_points[i].0]; // der index des punktes in point
-            for j in 0..con_bodies.len() {
-                // mindestens 2 Elemente müssen enthalten sein
-                for k in j + 1..con_bodies.len() {
-                    mat[(con_bodies[j], con_bodies[k])] = Pol::new(false, po.x, po.y);
-                    mat[(con_bodies[k], con_bodies[j])] = Pol::new(false, po.x, po.y);
+        get_rigid_body_connectivity(points, &rigid)
+    };
+    //println!("{:?}", rigid);
+    //println!("{:?}", connect_points);
+    for i in 0..connect_points.len() {
+        let con_bodies = &connect_points[i].1; // alle indezes der verbundenen Rigidbodies
+        let po = &points[connect_points[i].0]; // der index des punktes in point
+        for j in 0..con_bodies.len() {
+            // mindestens 2 Elemente müssen enthalten sein
+            for k in j + 1..con_bodies.len() {
+                let npol = Pol::new(false, po.x, po.y);
+                if matrix[(con_bodies[j], con_bodies[k])].exists()
+                    && !matrix[(con_bodies[j], con_bodies[k])].is_same(&npol)
+                {
+                    println!(
+                        "Widerspruch im Nebenpol {},{}",
+                        con_bodies[j], con_bodies[k]
+                    );
+                    return (false, con_bodies[j], con_bodies[k]);
+                } else {
+                    matrix[(con_bodies[j], con_bodies[k])] = npol.clone();
+                    matrix[(con_bodies[k], con_bodies[j])] = npol;
                 }
             }
         }
     }
-    //println!("{}", mat);
-    let anzahl_pole = bodies.len() - 1;
-    // Vector der bekannten Schlussregeln
-    let mut regeln = Vec::new();
-
+    return (true, usize::MAX, usize::MAX);
+}
+fn polplan_schlussregeln(
+    mat: &DCoordMat,
+    anzahl_pole: usize,
+    regeln: &mut Vec<Polschlussregel>,
+    already_done_rules: &Vec<u64>,
+) {
     for i in 0..anzahl_pole {
         // Iterieren durch alle möglichen
         for j in i..anzahl_pole {
             // Der i,j Pol mit
             if mat[(i, j)].exists() {
                 for k in 0..anzahl_pole {
-                    for l in k..anzahl_pole {
+                    for l in 0..anzahl_pole {
                         // mit dem k,l ten pol
                         if i == j && i == k && i != l && mat[(i, l)].exists() {
                             // (i,j) + (k,l) Remap (i,i) + (i,l) -> (l,l) HP+NP -> (HP)
-                            regeln.push(Polschlussregel([i, i], [i, l], [l, l]));
+                            regeln.push(Polschlussregel::new((i, i), (i, l), (l, l)));
                         }
                         if i == j && k == l && k > i && mat[(k, k)].exists() {
                             // (i,j) + (k,l) Remap (i,i) + (k,k) -> (i,k) HP+HP -> (NP)
-                            regeln.push(Polschlussregel([i, i], [k, k], [i, k]));
+                            regeln.push(Polschlussregel::new((i, i), (k, k), (i, k)));
                         }
                         if i != j && k != l && l > j && i == k && mat[(k, l)].exists() {
                             // (i,j) + (k,l) Remap (i,j) + (i,l) -> (j,l)
-                            regeln.push(Polschlussregel([i, j], [i, l], [j, l]));
+                            regeln.push(Polschlussregel::new((i, j), (i, l), (j, l)));
                         }
                     }
                 }
             }
         }
     }
-    //println!("{}",mat);
+    // Entfernen von Duplikaten
+    regeln.sort_by_key(|f| f.rule_type());
+    //regeln.dedup();
+    let mut cur = 0;
+    loop {
+        if cur >= regeln.len() {
+            break;
+        }
+        let mut rm = 0;
+        for i in 0..regeln.len() {
+            let i = i -rm;
+            if cur != i && calculate_hash(&regeln[i]) == calculate_hash(&regeln[cur]) {
+                regeln.remove(i);
+                rm += 1;
+            }
+        }
+        cur +=1;
+    }
+    
+    // Entfernen von befolgten regelen
     let anz_reg = regeln.len();
     let mut anz_remov = 0;
     for re in 0..anz_reg {
         let re = re - anz_remov;
-        if mat[regeln[re].result()].exists() // vllt existiert der schon
-                || (mat[regeln[re].first()].is_same(&mat[regeln[re].second()]) && (regeln[re].first().0 == regeln[re].first().1 || regeln[re].second().0 == regeln[re].second().1))
-        {
+        if already_done_rules.contains(&calculate_hash(&regeln[re])) {
             regeln.remove(re);
             anz_remov += 1;
         }
     }
-    loop {
-        if regeln.len() == 0 {
-            break;
-        }
-        let mut ig = 0;
-        let mut jg = 0;
-        regeln.sort_by_key(|f| f.rule_type());
-        for i in 0..regeln.len() {
-            for j in i + 1..regeln.len() {
-                if regeln[i].2[0] == regeln[j].2[0] && regeln[i].2[1] == regeln[j].2[1] {
-                    ig = i;
-                    jg = j;
-                }
+}
+
+/// Der zweite Index wird zum ersten hinzugefügt
+/// Wenn die Erdscheibe als letztes gelistet ist, und ein körper zur erdscheibe hinzugefügt werden soll dann
+/// ```
+/// erdscheiben_index, index_der_scheibe, liste
+/// ```
+fn polplan_join_bodies(index1: usize, index2: usize, bodies: &mut Vec<RigidBody>) {
+    let bod = bodies.remove(index2);
+    if index1 < index2 {
+        bodies[index1] = bodies[index1].join_with(bod);
+    } else {
+        bodies[index1 - 1] = bodies[index1 - 1].join_with(bod);
+    }
+}
+
+// Aufstellen des Polplans
+fn polplan(
+    points: &Vec<Point>,
+    bodies: &Vec<RigidBody>,
+    erdscheibe: &RigidBody,
+) -> (Vec<RigidBody>, DCoordMat) {
+    let mapping = Mapping {
+        map: sortPoints(&points),
+    };
+    let mut rigid = filter_erdscheibe_ans_ende(bodies, erdscheibe);
+
+    let mut mat = DCoordMat::from_element(0, 0, Pol::new(false, f64::NAN, f64::NAN));
+
+    'se_big_loop: loop {
+        let end = rigid.len() - 1;
+        mat = DCoordMat::from_element(end, end, Pol::new(false, f64::NAN, f64::NAN));
+
+        //println!("{:?}", rigid);
+
+        // Hier könnten schon widersprüche entstehen
+        let (widerspruchsfrei, index) = get_trivial_hauptpole(&mut mat, &rigid, points);
+        if !widerspruchsfrei {
+            polplan_join_bodies(end, index, &mut rigid);
+            continue 'se_big_loop;
+        };
+        let (widerspruchsfrei, ite, jte) = get_trivial_nebenpole(&mut mat, &rigid, points);
+        if !widerspruchsfrei {
+            polplan_join_bodies(ite, jte, &mut rigid);
+            continue 'se_big_loop;
+        };
+        // Es könnte auch sein, dass die Erdscheibe einen Stab vollständig
+
+        //println!("{:?},{}", rigid);
+        let anzahl_pole = rigid.len() - 1;
+        // Vector der bekannten Schlussregeln
+        let mut regeln = Vec::new();
+        let mut already_done_rules = Vec::new();
+
+        polplan_schlussregeln(&mat, anzahl_pole, &mut regeln, &already_done_rules);
+        //
+        loop {
+            // Der Polplan selbst
+            println!("{:?}",regeln);
+            if regeln.len() <= 0 {
+                // es gibt nur eine
+                break;
             }
-        }
-
-        //println!("{},{},{:?},{:?}", ig,jg,regeln[ig],regeln[jg]);
-        let regel1 = regeln.remove(ig);
-        let regel2 = regeln.remove(jg - 1); // da immer i < j gilt!
-                                            //println!("{:?},{:?}", regel1, regel2);
-                                            // Inferiere den Pol
-                                            // Regeln sind ja schön, aber hier brauch ich ne Fallunterscheidung
-                                            // Wenn (i,j) + (j,k) schon aufeinaner liegen, dann ist der dritte Pol auch dort!
-        let newpol_i = regel1.result().0;
-        let newpol_j = regel1.result().1;
-
-        let new_pol = Pol::infer(
-            &mat[regel1.first()],
-            &mat[regel1.second()],
-            &mat[regel2.first()],
-            &mat[regel2.second()],
-        );
-        println!(
-            "{:?},{:?} -> [{},{}] = {}",
-            regel1, regel2, newpol_i, newpol_j, new_pol
-        );
-        mat[(newpol_i, newpol_j)] = new_pol.clone();
-        mat[(newpol_j, newpol_i)] = new_pol;
-        // neue Schlussregeln
-        for i in 0..anzahl_pole {
-            // Iterieren durch alle möglichen
-            for j in i..anzahl_pole {
-                // Der i,j Pol mit
-                if mat[(i, j)].exists() {
-                    for k in 0..anzahl_pole {
-                        for l in 0..anzahl_pole {
-                            // mit dem k,l ten pol
-                            if i == j && i == k && i != l && mat[(i, l)].exists() {
-                                // (i,j) + (k,l) Remap (i,i) + (i,l) -> (l,l) HP+NP -> (HP)
-                                regeln.push(Polschlussregel([i, i], [i, l], [l, l]));
-                            }
-                            if i == j && k == l && mat[(k, k)].exists() {
-                                // (i,j) + (k,l) Remap (i,i) + (k,k) -> (i,k) HP+HP -> (NP)
-                                regeln.push(Polschlussregel([i, i], [k, k], [i, k]));
-                            }
-                            if i != j && k != l && i == k && mat[(k, l)].exists() {
-                                // (i,j) + (k,l) Remap (i,j) + (i,l) -> (j,l) NP+NP -> (NP)
-                                regeln.push(Polschlussregel([i, j], [i, l], [j, l]));
-                            }
-                        }
+            let mut ig = usize::MAX;
+            let mut jg = usize::MAX;
+            for i in 0..regeln.len() {
+                for j in i + 1..regeln.len() {
+                    if regeln[i].2[0] == regeln[j].2[0] && regeln[i].2[1] == regeln[j].2[1] {
+                        ig = i;
+                        jg = j;
                     }
                 }
             }
-        }
-        let anz_reg = regeln.len();
-        let mut anz_remov = 0;
-        for re in 0..anz_reg {
-            let re = re - anz_remov;
-            if regeln[re].result().0 == newpol_i && regeln[re].result().1 == newpol_j
-                || regeln[re].result().0 == newpol_j && regeln[re].result().1 == newpol_i //gefundene Nebenpole
-                || mat[regeln[re].result()].exists() // vllt existiert der schon
-                || (mat[regeln[re].first()].is_same(&mat[regeln[re].second()]) && (regeln[re].first().0 == regeln[re].first().1 || regeln[re].second().0 == regeln[re].second().1))
-            {
-                regeln.remove(re);
-                anz_remov += 1;
+            if ig == usize::MAX || jg == usize::MAX {
+                break;
             }
+
+            //println!("{},{},{:?},{:?}", ig,jg,regeln[ig],regeln[jg]);
+            let regel1 = &regeln[ig];
+            let regel2 = &regeln[jg];
+            
+            // Diese Regeln werden befolgt, daher sind sie nicht doppelt zu befolgen.
+
+            let (newpol_i, newpol_j) = regel1.result();
+
+            let new_pol = Pol::infer(
+                &mat[regel1.first()],
+                &mat[regel1.second()],
+                &mat[regel2.first()],
+                &mat[regel2.second()],
+            );
+            //println!("{}", mat);
+            println!(
+                "{:?},{:?} -> [{},{}] = {}",
+                regel1, regel2, newpol_i, newpol_j, new_pol
+            );
+            // Fallunterscheidung!
+            if mat[(newpol_i, newpol_j)].exists() {
+                // Der pol existiert schon!
+                if newpol_i == newpol_j && !mat[(newpol_i, newpol_j)].is_same(&new_pol) {
+                    // wir haben einen hauptpol
+                    //println!(
+                    //    "Widerspruch im Polplan, Hauptpol {} doppelt gefunden!\n{} != {}",
+                    //    newpol_i,
+                    //    new_pol,
+                    //    mat[(newpol_i, newpol_j)]
+                    //);
+                    polplan_join_bodies(end, newpol_i, &mut rigid);
+                    continue 'se_big_loop;
+                    // betreffende Scheibe ist erdscheibe
+                }
+                if newpol_i != newpol_j && !mat[(newpol_i, newpol_j)].is_same(&new_pol) {
+                    // wir haben einen nebenpol
+                    //println!(
+                    //    "Widerspruch im Nebenpol, Nebenpol {},{} doppelt gefunden!\n{} != {}",
+                    //    newpol_i,
+                    //    newpol_j,
+                    //    new_pol,
+                    //    mat[(newpol_i, newpol_j)]
+                    //);
+                    polplan_join_bodies(newpol_i, newpol_j, &mut rigid);
+                    continue 'se_big_loop;
+                    // Die Scheiben gehören zusammen.
+                }
+            }
+            mat[(newpol_i, newpol_j)] = new_pol.clone();
+            mat[(newpol_j, newpol_i)] = new_pol;
+            already_done_rules.push(calculate_hash(&regel1));
+            already_done_rules.push(calculate_hash(&regel2));
+            // neue Schlussregeln
+            polplan_schlussregeln(&mat, anzahl_pole, &mut regeln, &already_done_rules);
         }
+        // Polplan ist widerspruchsfrei
+        break 'se_big_loop;
     }
     //println!("{}", mat);
-    return mat;
+    return (rigid, mat);
 }
 
-fn kinematik(polplan: &DCoordMat, bodies: &Vec<RigidBody>, erdscheibe: &RigidBody) {
-    let f = filter_erdscheibe_ans_ende(bodies, erdscheibe);
+fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
+    //let f = filter_erdscheibe_ans_ende(bodies, erdscheibe);
 
     let mut lin_op = DMatrixf64::zeros(polplan.shape().0, polplan.shape().0);
     for unabhaengig in 0..polplan.shape().0 {
@@ -794,8 +913,12 @@ fn kinematik(polplan: &DCoordMat, bodies: &Vec<RigidBody>, erdscheibe: &RigidBod
                 } else if hp1.is_at_infinity {
                     // HP 1 ist im Unendlichen
                     // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
+                    // jedenfalls nicht im Anschauungsraum...
                     lin_op[(i, unabhaengig)] = 0.0;
                 } else if hp2.is_at_infinity {
+                    // HP 2 ist im Unendlichen
+                    // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
+                    // jedenfalls nicht im Anschauungsraum...
                     lin_op[(i, unabhaengig)] = 0.0;
                 } else if np.is_same(hp1) || np.is_same(hp2) {
                     // Jetzt können die nur noch koplanar sein!
@@ -815,16 +938,7 @@ fn kinematik(polplan: &DCoordMat, bodies: &Vec<RigidBody>, erdscheibe: &RigidBod
             }
         }
     }
-    println!("{}", lin_op);
-    for j in 0..polplan.shape().0 {
-        let mut vec = DVectorf64::zeros(lin_op.shape().0);
-        vec[j] = 1.0;
-        // Eigenvektorsuche
-
-        vec = &lin_op * vec;
-
-        println!("{}", vec);
-    }
+    return lin_op;
 }
 
 fn main() {
@@ -839,9 +953,13 @@ fn main() {
 
     let rigid = get_rigid_bodies(&v, &kant, &erd);
 
-    let pole = polplan(&v, &rigid, &erd);
+    let (rigid, pole) = polplan(&v, &rigid, &erd);
 
-    kinematik(&pole, &rigid, &erd);
+    let kin = kinematik(&pole);
+    println!("{}",kin);
 
     visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
+    let rigid = get_rigid_bodies(&v, &kant, &erd);
+    let rigid = filter_erdscheibe_ans_ende(&rigid, &erd);
+    visualise(&"2.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
 }
