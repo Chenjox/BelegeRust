@@ -208,9 +208,8 @@ fn draw_pole<DB: DrawingBackend>(
     let mut palette_iter = 0;
     for i in 0..pole.shape().0 {
         for j in i..pole.shape().1 {
-            let x = pole[(i, j)].x;
-            let y = pole[(i, j)].y;
-            let infty = pole[(i, j)].is_at_infinity;
+            let (x,y) = pole[(i, j)].get_real_coordinates();
+            let infty = pole[(i, j)].is_at_infinity();
             if i == j && !infty {
                 drawing_area
                     .draw(
@@ -279,7 +278,7 @@ pub fn visualise(
         min_y = min_y.min(i.y);
     }
     for i in polplan.iter() {
-        if !i.is_at_infinity {
+        if !i.is_at_infinity() {
             max_x = max_x.max(i.x);
             min_x = min_x.min(i.x);
             max_y = max_y.max(i.y);

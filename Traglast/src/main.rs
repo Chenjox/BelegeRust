@@ -9,7 +9,7 @@ use visualisation::visualise;
 type DAdjUsize = OMatrix<usize, Dynamic, Dynamic>;
 type DMatrixf64 = OMatrix<f64, Dynamic, Dynamic>;
 type DVectorf64 = OVector<f64, Dynamic>;
-type S2x2 = SMatrix<f64, 2, 2>;
+type S3x3 = SMatrix<f64, 2, 2>;
 type S2 = SVector<f64, 2>;
 type S3 = SVector<f64, 3>;
 
@@ -28,10 +28,10 @@ pub struct Point {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct Pol {
-    pub is_at_infinity: bool,
+pub struct Pol { // Angegeben in homogenen Koordiaten
     pub x: f64,
     pub y: f64,
+    pub z: f64
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -100,121 +100,95 @@ impl Polschlussregel {
 
 impl fmt::Display for Pol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.x.is_nan() {
-            write!(f, "()")
-        } else {
+
             write!(
                 f,
-                "({0}, {1:.4}, {2:.4})",
-                if self.is_at_infinity { "Inf" } else { "000" },
+                "({0:.4}, {1:.4}, {2:.4})",
                 self.x,
-                self.y
+                self.y,
+                self.z
             )
-        }
+
     }
 }
 
 impl Pol {
+    fn new_not_existing() -> Self {
+        return Pol {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0
+        };
+    }
     fn new(infty: bool, x: f64, y: f64) -> Self {
-        Pol {
-            is_at_infinity: infty,
+        if infty {Pol {
             x,
             y,
+            z: 0.0
+        }}
+        else {
+            Pol {
+            x,
+            y,
+            z: 1.0
+        }
         }
     }
     fn exists(&self) -> bool {
-        return !self.x.is_nan() && !self.y.is_nan();
+        return !((self.x == 0.0) && (self.y == 0.0) && (self.z == 0.0))
     }
     fn is_same(&self, other: &Pol) -> bool {
-        if (!self.is_at_infinity && other.is_at_infinity)
-            || (!self.is_at_infinity && other.is_at_infinity)
-        {
-            return false;
-        } // einer unendlich, der andere nicht
-        if self.is_at_infinity && other.is_at_infinity {
-            // beide unendlich
-            return (self.x * other.y - other.y * self.x).abs() < 1e16;
-        }
-        return (self.x - other.x).abs() < 1e-16 && (self.y - other.y).abs() < 1e-16;
+
+        let sv = S3::new(self.x, self.y, self.z);
+        let ov = S3::new(other.x, other.y, other.z);
+        let sv_max = sv.max();
+        let ov_max = ov.max();
+        let max = sv_max.max(ov_max);
+
+        let cv = sv.cross(&ov);
+        //println!("{},{}",cv.norm()/max < 1e-16, cv);
+        return cv.norm()/max < 1e-10;
     }
 }
 impl Pol {
     fn infer(p1: &Pol, p2: &Pol, q1: &Pol, q2: &Pol) -> Option<Self> {
-        let a_stuetz = if p1.is_at_infinity && !p2.is_at_infinity {
-            // Annahme, p1 oder p2 sind endlich
-            (p2.x, p2.y)
+        let p1v = S3::new(p1.x, p1.y, p1.z);
+        let p2v = S3::new(p2.x, p2.y, p2.z);
+        let q1v = S3::new(q1.x, q1.y, q1.z);
+        let q2v = S3::new(q2.x, q2.y, q2.z);
+        // deriving the planes of possible points
+        let eb1 = p1v.cross(&p2v);
+        let eb2 = q1v.cross(&q2v);
+        // schnitt der ebenen
+        let result = eb1.cross(&eb2);
+        if result[0] == 0.0 && result[1] == 0.0 && result[2] == 0.0 { // es gibt keinen Schnittpunkt (bzw. ist der unendliche Fernpunkt)
+            return None
+        }
+        let result = result.normalize();
+        return Some(Pol {
+            x: result[0],
+            y: result[1],
+            z: result[2]
+        });
+    }
+    fn is_at_infinity(&self) -> bool {
+        return self.z == 0.0;
+    }
+    fn get_real_coordinates(&self) -> (f64,f64) {
+        if self.z != 0.0 {
+            return (self.x/self.z, self.y/self.z);
+        } else if self.x != 0.0 {
+            return (self.y / self.x , f64::INFINITY);
         } else {
-            (p1.x, p1.y)
-        };
-        let a_richtung = if p1.is_at_infinity {
-            (p1.x, p1.y)
-        } else if p2.is_at_infinity {
-            (p2.x, p2.y)
-        } else {
-            (p1.x - p2.x, p1.y - p2.y)
-        };
-
-        let b_stuetz = if q1.is_at_infinity && !q2.is_at_infinity {
-            (q2.x, q2.y)
-        } else {
-            (q1.x, q1.y)
-        };
-        let b_richtung = if q1.is_at_infinity {
-            (q1.x, q1.y)
-        } else if q2.is_at_infinity {
-            (q2.x, q2.y)
-        } else {
-            (q1.x - q2.x, q1.y - q2.y)
-        };
-
-        let mut mat = S2x2::zeros();
-        let mut bvec = S2::zeros();
-
-        mat[(0, 0)] = -a_richtung.1;
-        mat[(0, 1)] = a_richtung.0;
-        mat[(1, 0)] = -b_richtung.1;
-        mat[(1, 1)] = b_richtung.0;
-
-        bvec[0] = a_stuetz.0 * mat[(0, 0)] + a_stuetz.1 * mat[(0, 1)];
-        bvec[1] = b_stuetz.0 * mat[(1, 0)] + b_stuetz.1 * mat[(1, 1)];
-
-        let det = mat.determinant();
-
-        if det.abs() != 0.0 {
-            let new = mat.full_piv_lu().solve(&bvec).unwrap();
-            return Some(Pol::new(false, new[0], new[1]));
-        } else { // Determinante ist null es herscht parallelität oder identisch sein
-            let mut rvec = S2::zeros();
-            rvec[0] = a_stuetz.0 - b_stuetz.0;
-            rvec[1] = a_stuetz.1 - b_stuetz.1;
-            // (self.x * other.y - other.y * self.x).abs() < 1e16;
-            if (rvec[0] * b_richtung.1 - rvec[1] * b_richtung.0).abs() < 1e-16 {
-                println!("{},{},{},{}",p1,p2,q1,q2);
-                return None;
-            }
-            //
-            let new_x = b_richtung.0;
-            let new_y = b_richtung.1;
-            //println!("{},{},{},{}, [{},{}]",p1,p2,q1,q2,new_x,new_y);
-            return Some(Pol::new(true, new_x, new_y));
+            return (f64::INFINITY,f64::INFINITY);
         }
     }
-
     fn distance(&self, other: &Pol) -> f64 {
-        if !self.is_at_infinity && !other.is_at_infinity {
+        if !(self.z == 0.0) && !(other.z == 0.0) {
             return ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt();
         } else {
             return f64::INFINITY;
         }
-    }
-
-    fn is_between(&self, other: &Pol, another: &Pol) -> bool {
-        return ((!other.is_at_infinity && other.is_at_infinity)
-            || (other.is_at_infinity && !other.is_at_infinity))
-            || ((other.x..=another.x).contains(&self.x)
-                || (another.x..=other.x).contains(&self.x))
-                && ((other.y..=another.y).contains(&self.y)
-                    || (another.y..=other.y).contains(&self.y));
     }
 }
 
@@ -799,7 +773,7 @@ fn polplan(
 
     'se_big_loop: loop {
         let end = rigid.len() - 1;
-        mat = DCoordMat::from_element(end, end, Pol::new(false, f64::NAN, f64::NAN));
+        mat = DCoordMat::from_element(end, end, Pol::new_not_existing());
 
         //println!("{:?}", rigid);
 
@@ -926,15 +900,15 @@ fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
                 let hp1 = &polplan[(unabhaengig, unabhaengig)];
                 let np = &polplan[(unabhaengig, i)];
                 let hp2 = &polplan[(i, i)];
-                if np.is_at_infinity {
+                if np.is_at_infinity() {
                     //println!("Nebenpol im Unendlichen!");
                     lin_op[(i, unabhaengig)] = 1.0;
-                } else if hp1.is_at_infinity {
+                } else if hp1.is_at_infinity() {
                     // HP 1 ist im Unendlichen
                     // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
                     // jedenfalls nicht im Anschauungsraum...
                     lin_op[(i, unabhaengig)] = 0.0;
-                } else if hp2.is_at_infinity {
+                } else if hp2.is_at_infinity() {
                     // HP 2 ist im Unendlichen
                     // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
                     // jedenfalls nicht im Anschauungsraum...
@@ -943,12 +917,11 @@ fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
                     // Jetzt können die nur noch koplanar sein!
                     lin_op[(i, unabhaengig)] = 0.0;
                 } else if np.exists() {
-                    let sign = if np.is_between(hp1, hp2) { -1.0 } else { 1.0 };
-                    let phi_m = sign * np.distance(hp1) / np.distance(hp2);
+                    let phi_m = np.distance(hp1) / np.distance(hp2);
                     lin_op[(i, unabhaengig)] = phi_m;
                 }
             } else {
-                if polplan[(unabhaengig, unabhaengig)].is_at_infinity {
+                if polplan[(unabhaengig, unabhaengig)].is_at_infinity() {
                     // Im Unendlichen ergibt ein finiter Wert keinen Sinn!
                     lin_op[(unabhaengig, unabhaengig)] = 0.0;
                 } else {
@@ -958,7 +931,7 @@ fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
         }
     }
     let mut vec = DVectorf64::zeros(polplan.shape().0);
-    vec[0]=1.0;
+    //vec[0]=1.0;
     for i in 0..polplan.shape().0 {
         vec = &lin_op * vec;
     }
