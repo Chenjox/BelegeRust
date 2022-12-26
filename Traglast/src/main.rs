@@ -11,6 +11,7 @@ type DMatrixf64 = OMatrix<f64, Dynamic, Dynamic>;
 type DVectorf64 = OVector<f64, Dynamic>;
 type S2x2 = SMatrix<f64, 2, 2>;
 type S2 = SVector<f64, 2>;
+type S3 = SVector<f64, 3>;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -138,7 +139,7 @@ impl Pol {
     }
 }
 impl Pol {
-    fn infer(p1: &Pol, p2: &Pol, q1: &Pol, q2: &Pol) -> Self {
+    fn infer(p1: &Pol, p2: &Pol, q1: &Pol, q2: &Pol) -> Option<Self> {
         let a_stuetz = if p1.is_at_infinity && !p2.is_at_infinity {
             // Annahme, p1 oder p2 sind endlich
             (p2.x, p2.y)
@@ -181,12 +182,21 @@ impl Pol {
 
         if det.abs() != 0.0 {
             let new = mat.full_piv_lu().solve(&bvec).unwrap();
-            return Pol::new(false, new[0], new[1]);
-        } else {
+            return Some(Pol::new(false, new[0], new[1]));
+        } else { // Determinante ist null es herscht parallelität oder identisch sein
+            let mut rvec = S2::zeros();
+            rvec[0] = a_stuetz.0 - b_stuetz.0;
+            rvec[1] = a_stuetz.1 - b_stuetz.1;
+            // (self.x * other.y - other.y * self.x).abs() < 1e16;
+            if (rvec[0] * b_richtung.1 - rvec[1] * b_richtung.0).abs() < 1e-16 {
+                println!("{},{},{},{}",p1,p2,q1,q2);
+                return None;
+            }
+            //
             let new_x = b_richtung.0;
             let new_y = b_richtung.1;
             //println!("{},{},{},{}, [{},{}]",p1,p2,q1,q2,new_x,new_y);
-            return Pol::new(true, new_x, new_y);
+            return Some(Pol::new(true, new_x, new_y));
         }
     }
 
@@ -716,11 +726,11 @@ fn polplan_schlussregeln(
                             // (i,j) + (k,l) Remap (i,i) + (i,l) -> (l,l) HP+NP -> (HP)
                             regeln.push(Polschlussregel::new((i, i), (i, l), (l, l)));
                         }
-                        if i == j && k == l && k > i && mat[(k, k)].exists() {
+                        if i == j && k == l && i != k && mat[(k, k)].exists() {
                             // (i,j) + (k,l) Remap (i,i) + (k,k) -> (i,k) HP+HP -> (NP)
                             regeln.push(Polschlussregel::new((i, i), (k, k), (i, k)));
                         }
-                        if i != j && k != l && l > j && i == k && mat[(k, l)].exists() {
+                        if i != j && k != l && i == k && j != l && mat[(i, l)].exists() {
                             // (i,j) + (k,l) Remap (i,j) + (i,l) -> (j,l)
                             regeln.push(Polschlussregel::new((i, j), (i, l), (j, l)));
                         }
@@ -804,7 +814,6 @@ fn polplan(
             polplan_join_bodies(ite, jte, &mut rigid);
             continue 'se_big_loop;
         };
-        // Es könnte auch sein, dass die Erdscheibe einen Stab vollständig
 
         //println!("{:?},{}", rigid);
         let anzahl_pole = rigid.len() - 1;
@@ -816,7 +825,7 @@ fn polplan(
         //
         loop {
             // Der Polplan selbst
-            println!("{:?}",regeln);
+            //println!("{:?}",regeln);
             if regeln.len() <= 0 {
                 // es gibt nur eine
                 break;
@@ -849,7 +858,16 @@ fn polplan(
                 &mat[regel2.first()],
                 &mat[regel2.second()],
             );
-            //println!("{}", mat);
+            let new_pol = match new_pol {
+                Some(p) => p,
+                None => {
+                    already_done_rules.push(calculate_hash(&regel1));
+                    already_done_rules.push(calculate_hash(&regel2));
+                    polplan_schlussregeln(&mat, anzahl_pole, &mut regeln, &already_done_rules);
+                    continue;
+                }
+            };
+            println!("{}", mat);
             println!(
                 "{:?},{:?} -> [{},{}] = {}",
                 regel1, regel2, newpol_i, newpol_j, new_pol
@@ -901,6 +919,7 @@ fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
     //let f = filter_erdscheibe_ans_ende(bodies, erdscheibe);
 
     let mut lin_op = DMatrixf64::zeros(polplan.shape().0, polplan.shape().0);
+    
     for unabhaengig in 0..polplan.shape().0 {
         for i in 0..polplan.shape().0 {
             if i != unabhaengig {
@@ -923,7 +942,7 @@ fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
                 } else if np.is_same(hp1) || np.is_same(hp2) {
                     // Jetzt können die nur noch koplanar sein!
                     lin_op[(i, unabhaengig)] = 0.0;
-                } else {
+                } else if np.exists() {
                     let sign = if np.is_between(hp1, hp2) { -1.0 } else { 1.0 };
                     let phi_m = sign * np.distance(hp1) / np.distance(hp2);
                     lin_op[(i, unabhaengig)] = phi_m;
@@ -938,6 +957,12 @@ fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
             }
         }
     }
+    let mut vec = DVectorf64::zeros(polplan.shape().0);
+    vec[0]=1.0;
+    for i in 0..polplan.shape().0 {
+        vec = &lin_op * vec;
+    }
+    println!("{}",vec);
     return lin_op;
 }
 
