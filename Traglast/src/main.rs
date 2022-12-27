@@ -841,11 +841,11 @@ fn polplan(
                     continue;
                 }
             };
-            println!("{}", mat);
-            println!(
-                "{:?},{:?} -> [{},{}] = {}",
-                regel1, regel2, newpol_i, newpol_j, new_pol
-            );
+            //println!("{}", mat);
+            //println!(
+            //    "{:?},{:?} -> [{},{}] = {}",
+            //    regel1, regel2, newpol_i, newpol_j, new_pol
+            //);
             // Fallunterscheidung!
             if mat[(newpol_i, newpol_j)].exists() {
                 // Der pol existiert schon!
@@ -889,54 +889,114 @@ fn polplan(
     return (rigid, mat);
 }
 
-fn kinematik(polplan: &DCoordMat) -> DMatrixf64 {
+fn kinematik(polplan: &DCoordMat) -> DVectorf64 {
     //let f = filter_erdscheibe_ans_ende(bodies, erdscheibe);
+    println!("{}", polplan);
+    let anzahl_pole = polplan.shape().0;
+    // suchen einer geeigneten Spalte (in der keine nicht-bestimmten Pole sind)
+    // Annahme, alle Diagonalwerte sind besetzt!
+    let mut candidate = 0;
+    for i in 0..anzahl_pole {
+        let mut is_accepted = true;
+        for j in 0..anzahl_pole {
+            is_accepted = is_accepted && polplan[(j,i)].exists();
+        }
+        if is_accepted && !polplan[(i,i)].is_at_infinity() {
+            candidate = i;
+            break;
+        }
+    }
+    let candidate = candidate;
 
-    let mut lin_op = DMatrixf64::zeros(polplan.shape().0, polplan.shape().0);
-    
-    for unabhaengig in 0..polplan.shape().0 {
-        for i in 0..polplan.shape().0 {
-            if i != unabhaengig {
-                let hp1 = &polplan[(unabhaengig, unabhaengig)];
-                let np = &polplan[(unabhaengig, i)];
-                let hp2 = &polplan[(i, i)];
-                if np.is_at_infinity() {
-                    //println!("Nebenpol im Unendlichen!");
-                    lin_op[(i, unabhaengig)] = 1.0;
-                } else if hp1.is_at_infinity() {
-                    // HP 1 ist im Unendlichen
-                    // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
-                    // jedenfalls nicht im Anschauungsraum...
-                    lin_op[(i, unabhaengig)] = 0.0;
-                } else if hp2.is_at_infinity() {
-                    // HP 2 ist im Unendlichen
-                    // Es gibt keine Sinnvolle übersetzung von unendlich zu finit
-                    // jedenfalls nicht im Anschauungsraum...
-                    lin_op[(i, unabhaengig)] = 0.0;
-                } else if np.is_same(hp1) || np.is_same(hp2) {
-                    // Jetzt können die nur noch koplanar sein!
-                    lin_op[(i, unabhaengig)] = 0.0;
-                } else if np.exists() {
-                    let phi_m = np.distance(hp1) / np.distance(hp2);
-                    lin_op[(i, unabhaengig)] = phi_m;
-                }
+    let mut matrix = DMatrixf64::zeros(anzahl_pole, anzahl_pole);
+    let hauptpol = &polplan[(candidate,candidate)];
+    for i in 0..anzahl_pole {
+        if i != candidate {
+            let nebenpol = &polplan[(i,candidate)];
+            let hp2 = &polplan[(i,i)];
+            if nebenpol.is_at_infinity() {
+                matrix[(i,candidate)] = 1.0;
+                matrix[(i,i)] = -1.0;
             } else {
-                if polplan[(unabhaengig, unabhaengig)].is_at_infinity() {
-                    // Im Unendlichen ergibt ein finiter Wert keinen Sinn!
-                    lin_op[(unabhaengig, unabhaengig)] = 0.0;
+                let (x_hp1,y_hp1) = hauptpol.get_real_coordinates();
+                let pos_hp1 = S2::new(x_hp1, y_hp1);
+                let (x_np,y_np) = nebenpol.get_real_coordinates();
+                let pos_np = S2::new(x_np, y_np);
+                let direction = pos_np - pos_hp1;
+                matrix[(i,candidate)] = (direction).norm();
+                // TODO wenn hauptpol1 im unendlichen ist!
+                if hp2.is_at_infinity() {
+                    let normal = S2::new(direction[1],-direction[0]).normalize();
+                    let trans_normal = S2::new(hp2.y,-hp2.x);
+                    let trans_norm = trans_normal.norm();
+                    let u = normal.dot(&trans_normal) / trans_norm;
+                    matrix[(i,i)] = u;
                 } else {
-                    lin_op[(unabhaengig, unabhaengig)] = 1.0;
+                    let (x_hp2,y_hp2) = hp2.get_real_coordinates();
+                    let pos_hp2 = S2::new(x_hp2, y_hp2);
+                    let direction = pos_np - pos_hp2;
+                    matrix[(i,i)] = direction.norm();
+                }
+            }
+        } else {
+            matrix[(i,i)] = 1.0;
+        }
+        
+    }
+    //println!("{}", matrix);
+    let mut b = DVectorf64::zeros(anzahl_pole);
+    b[candidate] = 1.0;
+    let lu = matrix.full_piv_lu();
+    lu.solve_mut(&mut b);
+
+    return b;
+}
+
+fn displacements(kinematik: &DVectorf64, polplan: &DCoordMat, rigid: &Vec<RigidBody>, points: &Vec<Point>) -> Vec<Point> {
+    let mapping = Mapping {
+        map: sortPoints(&points),
+    };
+    let mut result = points.clone();
+    for i in 0..rigid.len()-1 {
+        let rigid_points = &rigid[i].points;
+        let pol = &polplan[(i,i)];
+        if pol.is_at_infinity() {
+            let trans = S2::new(pol.y,-pol.x).normalize();
+            for j in 0..rigid_points.len() {
+                let point = &points[mapping.map_from(rigid_points[j])];
+                let p_num = point.num;
+                let point = S2::new(point.x,point.y);
+                let trans_point = point + trans * kinematik[i];
+                result[mapping.map_from(rigid_points[j])] = Point {
+                    num: p_num,
+                    name: String::new(),
+                    x: trans_point.x,
+                    y: trans_point.y
+                }
+            }
+        } else {
+            let pos = pol.get_real_coordinates();
+            let pos = S2::new(pos.0, pos.1);
+
+            for j in 0..rigid_points.len() {
+                let point = &points[mapping.map_from(rigid_points[j])];
+                let p_num = point.num;
+                let point = S2::new(point.x,point.y);
+                let dir = pos - point;
+                let dist = dir.norm();
+                let dir_normal = S2::new(dir.y, -dir.x).normalize();
+                let trans_point = point + dir_normal * dist * kinematik[i];
+                result[mapping.map_from(rigid_points[j])] = Point {
+                    num: p_num,
+                    name: String::new(),
+                    x: trans_point.x,
+                    y: trans_point.y
                 }
             }
         }
     }
-    let mut vec = DVectorf64::zeros(polplan.shape().0);
-    //vec[0]=1.0;
-    for i in 0..polplan.shape().0 {
-        vec = &lin_op * vec;
-    }
-    println!("{}",vec);
-    return lin_op;
+    println!("{:?}",result);
+    return result;
 }
 
 fn main() {
@@ -953,11 +1013,13 @@ fn main() {
 
     let (rigid, pole) = polplan(&v, &rigid, &erd);
 
-    let kin = kinematik(&pole);
+    let kin = kinematik(&pole).normalize();
     println!("{}",kin);
+
+    let displace = displacements(&kin, &pole, &rigid, &v);
 
     visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
     let rigid = get_rigid_bodies(&v, &kant, &erd);
     let rigid = filter_erdscheibe_ans_ende(&rigid, &erd);
-    visualise(&"2.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
+    visualise(&"2.png", 720, 720, &displace, &kant, &rigid, &erd, &pole);
 }
