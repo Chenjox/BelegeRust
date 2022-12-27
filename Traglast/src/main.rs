@@ -1,5 +1,6 @@
 mod visualisation;
 
+use itertools::Itertools;
 use nalgebra::{Dynamic, OMatrix, OVector, SVector};
 use std::collections::hash_map::DefaultHasher;
 use std::fmt;
@@ -11,6 +12,8 @@ type DMatrixf64 = OMatrix<f64, Dynamic, Dynamic>;
 type DVectorf64 = OVector<f64, Dynamic>;
 type S2 = SVector<f64, 2>;
 type S3 = SVector<f64, 3>;
+
+const ZERO_THRESHHOLD: f64 = 1e-12;
 
 fn calculate_hash<T: Hash>(t: &T) -> u64 {
     let mut s = DefaultHasher::new();
@@ -137,7 +140,7 @@ impl Pol {
 
         let cv = sv.cross(&ov);
         //println!("{},{}",cv.norm()/max < 1e-16, cv);
-        return cv.norm() / max < 1e-10;
+        return cv.norm() / max < ZERO_THRESHHOLD;
     }
 }
 impl Pol {
@@ -151,7 +154,10 @@ impl Pol {
         let eb2 = q1v.cross(&q2v);
         // schnitt der ebenen
         let result = eb1.cross(&eb2);
-        if result[0] == 0.0 && result[1] == 0.0 && result[2] == 0.0 {
+        if result[0].abs() < ZERO_THRESHHOLD
+            && result[1].abs() < ZERO_THRESHHOLD
+            && result[2].abs() < ZERO_THRESHHOLD
+        {
             // es gibt keinen Schnittpunkt (bzw. ist der unendliche Fernpunkt)
             return None;
         }
@@ -163,7 +169,7 @@ impl Pol {
         });
     }
     fn is_at_infinity(&self) -> bool {
-        return self.z.abs() < 1e-12;
+        return self.z.abs() < ZERO_THRESHHOLD;
     }
     fn get_real_coordinates(&self) -> (f64, f64) {
         if self.z != 0.0 {
@@ -174,11 +180,24 @@ impl Pol {
             return (f64::INFINITY, f64::INFINITY);
         }
     }
+    fn are_collinear(p1: &Pol, p2: &Pol, p3: &Pol) -> bool {
+        let p1v = S3::new(p1.x, p1.y, p1.z);
+        let p2v = S3::new(p2.x, p2.y, p2.z);
+        let p3v = S3::new(p3.x, p3.y, p3.z);
+
+        if p1v.cross(&p2v).norm() < ZERO_THRESHHOLD
+            && p1v.cross(&p3v).norm() < ZERO_THRESHHOLD
+            && p2v.cross(&p3v).norm() < ZERO_THRESHHOLD
+        {
+            return true;
+        }
+        return false;
+    }
 }
 
 type DCoordMat = OMatrix<Pol, Dynamic, Dynamic>;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Beam {
     pub from: usize,
     pub to: usize,
@@ -406,12 +425,22 @@ fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
         nplast: 1.0,
     });
 
-    //kant.swap_remove(3);
-    kant.swap_remove(4);
-    kant.swap_remove(7);
-    kant.swap_remove(27);
-
     return (v, kant);
+}
+
+fn remove_beams(beams: &mut Vec<Beam>, indeces: &Vec<usize>) -> Vec<Beam> {
+    let mut res = Vec::new();
+    let beams_total = beams.len();
+    let mut remove_total = 0;
+    for i in 0..beams_total {
+        if indeces.contains(&i) {
+            let i = i - remove_total;
+            let b = beams.remove(i);
+            remove_total += 1;
+            res.push(b);
+        }
+    }
+    return res;
 }
 
 fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) -> Vec<RigidBody> {
@@ -632,7 +661,7 @@ fn get_trivial_hauptpole(
                     if matrix[(con_bodies[j], con_bodies[j])].exists()
                         && !matrix[(con_bodies[j], con_bodies[j])].is_same(&npol)
                     {
-                        println!("Widerspruch im Hauptpol {}", con_bodies[j]);
+                        //println!("Widerspruch im Hauptpol {}", con_bodies[j]);
                         return (false, con_bodies[j]);
                     } else {
                         matrix[(con_bodies[j], con_bodies[j])] = npol;
@@ -667,10 +696,10 @@ fn get_trivial_nebenpole(
                 if matrix[(con_bodies[j], con_bodies[k])].exists()
                     && !matrix[(con_bodies[j], con_bodies[k])].is_same(&npol)
                 {
-                    println!(
-                        "Widerspruch im Nebenpol {},{}",
-                        con_bodies[j], con_bodies[k]
-                    );
+                    //println!(
+                    //    "Widerspruch im Nebenpol {},{}",
+                    //    con_bodies[j], con_bodies[k]
+                    //);
                     return (false, con_bodies[j], con_bodies[k]);
                 } else {
                     matrix[(con_bodies[j], con_bodies[k])] = npol.clone();
@@ -791,6 +820,19 @@ fn polplan(
         //println!("{:?},{}", rigid);
         let anzahl_pole = rigid.len() - 1;
         // Vector der bekannten Schlussregeln
+        if mat.shape().0 == 2 {
+            
+            let p1 = &mat[(0,0)];
+            let p2 = &mat[(0,1)];
+            let p3 = &mat[(1,1)];
+            if !Pol::are_collinear(p1, p2, p3) {
+                
+                polplan_join_bodies(0, 1, &mut rigid);
+                
+                continue 'se_big_loop;
+            }
+            
+        }
         let mut regeln = Vec::new();
         let mut already_done_rules = Vec::new();
 
@@ -800,6 +842,8 @@ fn polplan(
             // Der Polplan selbst
             //println!("{:?}",regeln);
             if regeln.len() <= 0 {
+                //Überprüfung der letzten regel
+                
                 // es gibt nur eine
                 break;
             }
@@ -1000,11 +1044,14 @@ fn displacements(
                 let dist = dir.norm();
                 let dir_normal = S2::new(dir.y, -dir.x).normalize();
                 let trans_point = dir_normal * dist * kinematik[i];
-                result[mapping.map_from(rigid_points[j])] = Point {
-                    num: p_num,
-                    name: p_name,
-                    x: trans_point.x,
-                    y: trans_point.y,
+
+                if dist > 1e-12 {
+                    result[mapping.map_from(rigid_points[j])] = Point {
+                        num: p_num,
+                        name: p_name,
+                        x: trans_point.x,
+                        y: trans_point.y,
+                    }
                 }
             }
         }
@@ -1013,21 +1060,153 @@ fn displacements(
     return result;
 }
 
+fn add_displacements(points: &Vec<Point>, displacements: &Vec<Point>) -> Vec<Point> {
+    let mapping = Mapping {
+        map: sortPoints(&displacements),
+    };
+    let mut res = Vec::new();
+    for i in points {
+        let dis = &displacements[mapping.map_from(i.num)];
+        let new_point = i.to_vector() + dis.to_vector();
+        res.push(Point {
+            num: i.num,
+            name: i.name.clone(),
+            x: new_point.x,
+            y: new_point.y,
+        })
+    }
+    return res;
+}
+
+fn get_plastic_loading(
+    points: &Vec<Point>,
+    displacements: &Vec<Point>,
+    missing_beams: &Vec<Beam>,
+) -> Vec<Load> {
+    let mut res = Vec::new();
+    let mapping = Mapping {
+        map: sortPoints(points),
+    };
+    for beam in missing_beams {
+        let from = &points[mapping.map_from(beam.from)];
+        let to = &points[mapping.map_from(beam.to)];
+        let from_vec = from.to_vector();
+        let to_vec = to.to_vector();
+        let dir = (from_vec - to_vec).normalize();
+        let from_displace = displacements[mapping.map_from(beam.from)].to_vector();
+        let to_displace = displacements[mapping.map_from(beam.to)].to_vector();
+        let from_dis = dir.dot(&from_displace);
+        let to_dis = dir.dot(&to_displace);
+        let streckung = -from_dis + to_dis;
+
+        let streckung = streckung.signum();
+        let plastic_force = beam.nplast;
+        let load_from = -dir * streckung * plastic_force;
+        let load_to = dir * streckung * plastic_force;
+
+        res.push(Load::new(load_from.x, load_from.y, from.num));
+        res.push(Load::new(load_to.x, load_to.y, to.num));
+    }
+    return res;
+}
+
+fn get_traglast(
+    displacements: &Vec<Point>,
+    outer_loading: &Vec<Load>,
+    inner_loading: &Vec<Load>,
+) -> f64 {
+    let mapping = Mapping {
+        map: sortPoints(displacements),
+    };
+    let mut outer_work = 0.0;
+    for load in outer_loading {
+        let dis = displacements[mapping.map_from(load.point)].to_vector();
+        let loading = load.to_vector();
+        let work = dis.dot(&loading);
+        outer_work += work;
+    }
+    let mut inner_work = 0.0;
+    for load in inner_loading {
+        let dis = displacements[mapping.map_from(load.point)].to_vector();
+        let loading = load.to_vector();
+        let work = dis.dot(&loading);
+        inner_work += work;
+    }
+    if outer_work.abs() < 1e-10 || -inner_work / outer_work < 0.0 {
+        return f64::MAX;
+    }
+    return -inner_work / outer_work;
+}
+
+fn traglast(
+    points: &Vec<Point>,
+    erdscheibe: &RigidBody,
+    beams: &Vec<Beam>,
+    missing_beams: &Vec<usize>,
+) -> f64 {
+    let mut kant = beams.clone();
+    let missing_beams = remove_beams(&mut kant, missing_beams);
+    let kant = kant;
+    let loading = get_loading();
+
+    // Erdscheibe hinzufügen
+    let erd = erdscheibe;
+
+    let rigid = get_rigid_bodies(&points, &kant, erd);
+
+    let rigid = filter_erdscheibe_ans_ende(&rigid, erd);
+
+    let (rigid, pole) = polplan(&points, &rigid, erd);
+    //println!("{}", pole);
+    if pole.shape().0 == 0 {
+        return f64::MAX;
+    }
+
+    let kin = kinematik(&pole).normalize();
+    //println!("{}", kin);
+
+    let displace = displacements(&kin, &pole, &rigid, &points);
+    //println!("{:?}", displace);
+
+    let plastic_loads = get_plastic_loading(&points, &displace, &missing_beams);
+
+    let traglast = get_traglast(&displace, &loading, &plastic_loads);
+    return traglast;
+}
+
 fn main() {
     let (v, kant) = get_tragwerk();
+    let kant_indezes = Vec::from_iter(0..kant.len());
+    let erd = RigidBody {
+        points: vec![15, 16, 17, 18],
+    };
+    let mut min = f64::MAX;
+    let mut winning = Vec::new();
+    for missing in kant_indezes.iter().combinations(3) {
+        let miss = missing.iter().map(|i| **i).collect_vec();
+        let traglast = traglast(&v, &erd, &kant, &miss);
+        if traglast < 100.0 {
+            println!("{},{},{},{}",miss[0],miss[1],miss[2],traglast);
+        }
+        if min > traglast {
+            min = traglast;
+            winning = miss;
+        }
+    }
+    //let winning = vec![0,1,3];
+    let mut kant = kant;
+    let missing_beams = remove_beams(&mut kant, &winning);
+    let kant = kant;
     let loading = get_loading();
     let _mapping = Mapping {
         map: sortPoints(&v),
     };
     // Erdscheibe hinzufügen
-    let erd = RigidBody {
-        points: vec![15, 16, 17, 18],
-    };
 
     let rigid = get_rigid_bodies(&v, &kant, &erd);
 
     let (rigid, pole) = polplan(&v, &rigid, &erd);
-    println!("{}", pole);
+    println!("{:?},{}", rigid, pole);
 
     let kin = kinematik(&pole).normalize();
     println!("{}", kin);
@@ -1035,10 +1214,26 @@ fn main() {
     let displace = displacements(&kin, &pole, &rigid, &v);
     println!("{:?}", displace);
 
+    let plastic_loads = get_plastic_loading(&v, &displace, &missing_beams);
+
+    let traglast = get_traglast(&displace, &loading, &plastic_loads);
+    println!("{}", traglast);
+    let mut loading = loading;
+    loading.extend(plastic_loads);
+    let loading = loading;
+
     visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole, &loading);
-    let rigid = get_rigid_bodies(&v, &kant, &erd);
-    let rigid = filter_erdscheibe_ans_ende(&rigid, &erd);
+
+    let p = add_displacements(&v, &displace);
     visualise(
-        &"2.png", 720, 720, &displace, &kant, &rigid, &erd, &pole, &loading,
+        &"2.png",
+        720,
+        720,
+        &p,
+        &kant,
+        &rigid,
+        &erd,
+        &DCoordMat::from_element(0, 0, Pol::new_not_existing()),
+        &vec![],
     );
 }

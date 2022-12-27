@@ -346,7 +346,7 @@ pub fn visualise(
 
     draw_points(&root, points);
     draw_beams(&root, points, beams);
-    draw_rigid_bodies(&root, points, rigidbodies, erdscheibe);
+    //draw_rigid_bodies(&root, points, rigidbodies, erdscheibe);
     draw_pole(&root, &polplan);
     draw_loads(&root, loads, points);
 
