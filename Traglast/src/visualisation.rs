@@ -223,8 +223,8 @@ fn draw_pole<DB: DrawingBackend>(
     for i in 0..pole.shape().0 {
         for j in i..pole.shape().1 {
             let (x, y) = pole[(i, j)].get_real_coordinates();
-            let infty = pole[(i, j)].is_at_infinity();
-            if i == j && !infty {
+            let drawable = !pole[(i, j)].is_at_infinity() && pole[(i, j)].exists();
+            if i == j && drawable {
                 drawing_area
                     .draw(
                         &(EmptyElement::at((x, y))
@@ -240,7 +240,7 @@ fn draw_pole<DB: DrawingBackend>(
                             )),
                     )
                     .unwrap();
-            } else if !infty {
+            } else if drawable {
                 let mut offset = 0;
 
                 offset += visited_coords
@@ -249,7 +249,7 @@ fn draw_pole<DB: DrawingBackend>(
                         ((n.0 - x).powi(2) + (n.1 - y).powi(2)).sqrt() < 16e-10
                     })
                     .count();
-
+                println!("{},{}", x, y);
                 visited_coords.push((x, y));
                 drawing_area
                     .draw(
@@ -347,8 +347,8 @@ pub fn visualise(
     draw_points(&root, points);
     draw_beams(&root, points, beams);
     //draw_rigid_bodies(&root, points, rigidbodies, erdscheibe);
-    draw_pole(&root, &polplan);
-    draw_loads(&root, loads, points);
+    //draw_pole(&root, &polplan);
+    //draw_loads(&root, loads, points);
 
     // And if we want SVG backend
     // let backend = SVGBackend::new("output.svg", (800, 600));
