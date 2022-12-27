@@ -1,15 +1,14 @@
 mod visualisation;
 
-use nalgebra::{Dynamic, OMatrix, OVector, SMatrix, SVector};
+use nalgebra::{Dynamic, OMatrix, OVector, SVector};
 use std::collections::hash_map::DefaultHasher;
+use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::{fmt, fs::FileType};
 use visualisation::visualise;
 
 type DAdjUsize = OMatrix<usize, Dynamic, Dynamic>;
 type DMatrixf64 = OMatrix<f64, Dynamic, Dynamic>;
 type DVectorf64 = OVector<f64, Dynamic>;
-type S3x3 = SMatrix<f64, 2, 2>;
 type S2 = SVector<f64, 2>;
 type S3 = SVector<f64, 3>;
 
@@ -27,11 +26,18 @@ pub struct Point {
     pub y: f64,
 }
 
+impl Point {
+    pub fn to_vector(&self) -> S2 {
+        return S2::new(self.x, self.y);
+    }
+}
+
 #[derive(Clone, PartialEq, Debug)]
-pub struct Pol { // Angegeben in homogenen Koordiaten
+pub struct Pol {
+    // Angegeben in homogenen Koordiaten
     pub x: f64,
     pub y: f64,
-    pub z: f64
+    pub z: f64,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq)]
@@ -100,15 +106,7 @@ impl Polschlussregel {
 
 impl fmt::Display for Pol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
-            write!(
-                f,
-                "({0:.4}, {1:.4}, {2:.4})",
-                self.x,
-                self.y,
-                self.z
-            )
-
+        write!(f, "({0:.4}, {1:.4}, {2:.4})", self.x, self.y, self.z)
     }
 }
 
@@ -117,28 +115,20 @@ impl Pol {
         return Pol {
             x: 0.0,
             y: 0.0,
-            z: 0.0
+            z: 0.0,
         };
     }
     fn new(infty: bool, x: f64, y: f64) -> Self {
-        if infty {Pol {
-            x,
-            y,
-            z: 0.0
-        }}
-        else {
-            Pol {
-            x,
-            y,
-            z: 1.0
-        }
+        if infty {
+            Pol { x, y, z: 0.0 }
+        } else {
+            Pol { x, y, z: 1.0 }
         }
     }
     fn exists(&self) -> bool {
-        return !((self.x == 0.0) && (self.y == 0.0) && (self.z == 0.0))
+        return !((self.x == 0.0) && (self.y == 0.0) && (self.z == 0.0));
     }
     fn is_same(&self, other: &Pol) -> bool {
-
         let sv = S3::new(self.x, self.y, self.z);
         let ov = S3::new(other.x, other.y, other.z);
         let sv_max = sv.max();
@@ -147,7 +137,7 @@ impl Pol {
 
         let cv = sv.cross(&ov);
         //println!("{},{}",cv.norm()/max < 1e-16, cv);
-        return cv.norm()/max < 1e-10;
+        return cv.norm() / max < 1e-10;
     }
 }
 impl Pol {
@@ -161,33 +151,27 @@ impl Pol {
         let eb2 = q1v.cross(&q2v);
         // schnitt der ebenen
         let result = eb1.cross(&eb2);
-        if result[0] == 0.0 && result[1] == 0.0 && result[2] == 0.0 { // es gibt keinen Schnittpunkt (bzw. ist der unendliche Fernpunkt)
-            return None
+        if result[0] == 0.0 && result[1] == 0.0 && result[2] == 0.0 {
+            // es gibt keinen Schnittpunkt (bzw. ist der unendliche Fernpunkt)
+            return None;
         }
         let result = result.normalize();
         return Some(Pol {
             x: result[0],
             y: result[1],
-            z: result[2]
+            z: result[2],
         });
     }
     fn is_at_infinity(&self) -> bool {
-        return self.z == 0.0;
+        return self.z.abs() < 1e-12;
     }
-    fn get_real_coordinates(&self) -> (f64,f64) {
+    fn get_real_coordinates(&self) -> (f64, f64) {
         if self.z != 0.0 {
-            return (self.x/self.z, self.y/self.z);
+            return (self.x / self.z, self.y / self.z);
         } else if self.x != 0.0 {
-            return (self.y / self.x , f64::INFINITY);
+            return (self.y / self.x, f64::INFINITY);
         } else {
-            return (f64::INFINITY,f64::INFINITY);
-        }
-    }
-    fn distance(&self, other: &Pol) -> f64 {
-        if !(self.z == 0.0) && !(other.z == 0.0) {
-            return ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt();
-        } else {
-            return f64::INFINITY;
+            return (f64::INFINITY, f64::INFINITY);
         }
     }
 }
@@ -275,26 +259,6 @@ impl Triangle {
         return eq;
     }
 
-    fn is_joined_with(&self, other: &Triangle) -> bool {
-        let s_elem = [self.0, self.1, self.2];
-        let o_elem = [other.0, other.1, other.2];
-        let mut is_contained = [false, false, false];
-        // sind 2 elemente in der anderen enthalten?
-        for i in 0..3 {
-            let mut is_member = false;
-            for j in 0..3 {
-                is_member = s_elem[i] == o_elem[j] || is_member;
-            }
-            is_contained[i] = is_member;
-        }
-        let mut count = 0;
-        for i in 0..3 {
-            if is_contained[i] {
-                count = count + 1;
-            }
-        }
-        return count == 2;
-    }
     fn contains_beam(&self, other: &Beam) -> bool {
         let s_elem = [self.0, self.1, self.2];
         let o_elem = [other.from, other.to];
@@ -317,6 +281,32 @@ impl Triangle {
     }
 }
 
+#[derive(Debug)]
+pub struct Load {
+    x: f64,
+    y: f64,
+    point: usize,
+}
+
+impl Load {
+    fn new(x: f64, y: f64, point: usize) -> Self {
+        Load { x, y, point }
+    }
+    pub fn to_vector(&self) -> S2 {
+        return S2::new(self.x, self.y);
+    }
+}
+
+fn get_loading() -> Vec<Load> {
+    let mut res = Vec::new();
+
+    res.push(Load::new(3.0, 0.0, 1));
+    res.push(Load::new(0.0, -2.0, 4));
+    res.push(Load::new(0.0, -1.0, 5));
+
+    return res;
+}
+
 fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
     let mut v = Vec::new();
 
@@ -330,12 +320,21 @@ fn get_tragwerk() -> (Vec<Point>, Vec<Beam>) {
         });
     }
     for i in 0..7 {
-        v.push(Point {
-            num: i + 8,
-            name: format!("A{}", i + 1),
-            x: (3.0 * i as f64),
-            y: 3.0,
-        });
+        if (10..=12).contains(&(i + 8)) {
+            v.push(Point {
+                num: i + 8,
+                name: format!("A{}", i + 1),
+                x: (3.0 * i as f64),
+                y: 4.5,
+            });
+        } else {
+            v.push(Point {
+                num: i + 8,
+                name: format!("A{}", i + 1),
+                x: (3.0 * i as f64),
+                y: 3.0,
+            });
+        }
     }
     for i in 0..2 {
         v.push(Point {
@@ -432,7 +431,7 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) ->
     }
     let adj = adj;
 
-    let adjSquare = &adj * &adj;
+    let adj_square = &adj * &adj;
 
     //println!("{},{}", adj, adjSquare);
 
@@ -440,7 +439,7 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) ->
 
     for i in 0..v.len() {
         for j in i + 1..v.len() {
-            if adj[(i, j)] > 0 && adjSquare[(i, j)] > 0 {
+            if adj[(i, j)] > 0 && adj_square[(i, j)] > 0 {
                 // das finden der dritten Node des Dreiecks
                 for k in i + 1..v.len() {
                     if adj[(i, k)] > 0 && adj[(k, j)] > 0 {
@@ -484,7 +483,7 @@ fn get_rigid_bodies(v: &Vec<Point>, kant: &Vec<Beam>, erdscheibe: &RigidBody) ->
     // alle Rigidbodys zusammenführen
     //println!("{:?}\n", rigid);
 
-    for i in 0..rigid.len() {
+    for _i in 0..rigid.len() {
         let mut anz_rem = 0;
         for cur_i in 0..rigid.len() - 1 {
             let cur_i = if cur_i > anz_rem {
@@ -557,17 +556,17 @@ pub fn sortPoints(pvec: &Vec<Point>) -> Vec<usize> {
 }
 
 // erstellen der Adjazenzmatrix
-fn get_adjacency_matrix(pvec: &Vec<Point>, sortVec: &Vec<usize>, bvec: &Vec<Beam>) -> DAdjUsize {
+fn get_adjacency_matrix(pvec: &Vec<Point>, sort_vec: &Vec<usize>, bvec: &Vec<Beam>) -> DAdjUsize {
     let mut adj_mat = DAdjUsize::zeros(pvec.len(), pvec.len());
 
-    for i in 0..sortVec.len() {
+    for i in 0..sort_vec.len() {
         for j in 0..bvec.len() {
             let b = &bvec[j];
-            if sortVec[i] == b.from {
+            if sort_vec[i] == b.from {
                 // index des von Punktes finden
                 let f = b.to;
-                for k in 0..sortVec.len() {
-                    if sortVec[k] == f {
+                for k in 0..sort_vec.len() {
+                    if sort_vec[k] == f {
                         adj_mat[(i, k)] = 1;
                         adj_mat[(k, i)] = 1;
                     }
@@ -723,15 +722,15 @@ fn polplan_schlussregeln(
         }
         let mut rm = 0;
         for i in 0..regeln.len() {
-            let i = i -rm;
+            let i = i - rm;
             if cur != i && calculate_hash(&regeln[i]) == calculate_hash(&regeln[cur]) {
                 regeln.remove(i);
                 rm += 1;
             }
         }
-        cur +=1;
+        cur += 1;
     }
-    
+
     // Entfernen von befolgten regelen
     let anz_reg = regeln.len();
     let mut anz_remov = 0;
@@ -764,12 +763,12 @@ fn polplan(
     bodies: &Vec<RigidBody>,
     erdscheibe: &RigidBody,
 ) -> (Vec<RigidBody>, DCoordMat) {
-    let mapping = Mapping {
+    let _mapping = Mapping {
         map: sortPoints(&points),
     };
     let mut rigid = filter_erdscheibe_ans_ende(bodies, erdscheibe);
 
-    let mut mat = DCoordMat::from_element(0, 0, Pol::new(false, f64::NAN, f64::NAN));
+    let mut mat;
 
     'se_big_loop: loop {
         let end = rigid.len() - 1;
@@ -821,7 +820,7 @@ fn polplan(
             //println!("{},{},{:?},{:?}", ig,jg,regeln[ig],regeln[jg]);
             let regel1 = &regeln[ig];
             let regel2 = &regeln[jg];
-            
+
             // Diese Regeln werden befolgt, daher sind sie nicht doppelt zu befolgen.
 
             let (newpol_i, newpol_j) = regel1.result();
@@ -891,7 +890,7 @@ fn polplan(
 
 fn kinematik(polplan: &DCoordMat) -> DVectorf64 {
     //let f = filter_erdscheibe_ans_ende(bodies, erdscheibe);
-    println!("{}", polplan);
+    //println!("{}", polplan);
     let anzahl_pole = polplan.shape().0;
     // suchen einer geeigneten Spalte (in der keine nicht-bestimmten Pole sind)
     // Annahme, alle Diagonalwerte sind besetzt!
@@ -899,9 +898,9 @@ fn kinematik(polplan: &DCoordMat) -> DVectorf64 {
     for i in 0..anzahl_pole {
         let mut is_accepted = true;
         for j in 0..anzahl_pole {
-            is_accepted = is_accepted && polplan[(j,i)].exists();
+            is_accepted = is_accepted && polplan[(j, i)].exists();
         }
-        if is_accepted && !polplan[(i,i)].is_at_infinity() {
+        if is_accepted && !polplan[(i, i)].is_at_infinity() {
             candidate = i;
             break;
         }
@@ -909,39 +908,38 @@ fn kinematik(polplan: &DCoordMat) -> DVectorf64 {
     let candidate = candidate;
 
     let mut matrix = DMatrixf64::zeros(anzahl_pole, anzahl_pole);
-    let hauptpol = &polplan[(candidate,candidate)];
+    let hauptpol = &polplan[(candidate, candidate)];
     for i in 0..anzahl_pole {
         if i != candidate {
-            let nebenpol = &polplan[(i,candidate)];
-            let hp2 = &polplan[(i,i)];
+            let nebenpol = &polplan[(i, candidate)];
+            let hp2 = &polplan[(i, i)];
             if nebenpol.is_at_infinity() {
-                matrix[(i,candidate)] = 1.0;
-                matrix[(i,i)] = -1.0;
+                matrix[(i, candidate)] = 1.0;
+                matrix[(i, i)] = -1.0;
             } else {
-                let (x_hp1,y_hp1) = hauptpol.get_real_coordinates();
+                let (x_hp1, y_hp1) = hauptpol.get_real_coordinates();
                 let pos_hp1 = S2::new(x_hp1, y_hp1);
-                let (x_np,y_np) = nebenpol.get_real_coordinates();
+                let (x_np, y_np) = nebenpol.get_real_coordinates();
                 let pos_np = S2::new(x_np, y_np);
                 let direction = pos_np - pos_hp1;
-                matrix[(i,candidate)] = (direction).norm();
+                matrix[(i, candidate)] = (direction).norm();
                 // TODO wenn hauptpol1 im unendlichen ist!
                 if hp2.is_at_infinity() {
-                    let normal = S2::new(direction[1],-direction[0]).normalize();
-                    let trans_normal = S2::new(hp2.y,-hp2.x);
+                    let normal = S2::new(direction[1], -direction[0]).normalize();
+                    let trans_normal = S2::new(hp2.y, -hp2.x);
                     let trans_norm = trans_normal.norm();
                     let u = normal.dot(&trans_normal) / trans_norm;
-                    matrix[(i,i)] = u;
+                    matrix[(i, i)] = u;
                 } else {
-                    let (x_hp2,y_hp2) = hp2.get_real_coordinates();
+                    let (x_hp2, y_hp2) = hp2.get_real_coordinates();
                     let pos_hp2 = S2::new(x_hp2, y_hp2);
                     let direction = pos_np - pos_hp2;
-                    matrix[(i,i)] = direction.norm();
+                    matrix[(i, i)] = direction.norm();
                 }
             }
         } else {
-            matrix[(i,i)] = 1.0;
+            matrix[(i, i)] = 1.0;
         }
-        
     }
     //println!("{}", matrix);
     let mut b = DVectorf64::zeros(anzahl_pole);
@@ -952,26 +950,41 @@ fn kinematik(polplan: &DCoordMat) -> DVectorf64 {
     return b;
 }
 
-fn displacements(kinematik: &DVectorf64, polplan: &DCoordMat, rigid: &Vec<RigidBody>, points: &Vec<Point>) -> Vec<Point> {
+fn displacements(
+    kinematik: &DVectorf64,
+    polplan: &DCoordMat,
+    rigid: &Vec<RigidBody>,
+    points: &Vec<Point>,
+) -> Vec<Point> {
     let mapping = Mapping {
         map: sortPoints(&points),
     };
-    let mut result = points.clone();
-    for i in 0..rigid.len()-1 {
+    let mut result: Vec<Point> = points
+        .clone()
+        .iter()
+        .map(|f| Point {
+            num: f.num,
+            name: f.name.clone(),
+            x: 0.0,
+            y: 0.0,
+        })
+        .collect();
+    for i in 0..rigid.len() - 1 {
         let rigid_points = &rigid[i].points;
-        let pol = &polplan[(i,i)];
+        let pol = &polplan[(i, i)];
         if pol.is_at_infinity() {
-            let trans = S2::new(pol.y,-pol.x).normalize();
+            let trans = S2::new(pol.y, -pol.x).normalize();
             for j in 0..rigid_points.len() {
                 let point = &points[mapping.map_from(rigid_points[j])];
                 let p_num = point.num;
-                let point = S2::new(point.x,point.y);
-                let trans_point = point + trans * kinematik[i];
+                let p_name = point.name.clone();
+                //let point = S2::new(point.x, point.y);
+                let trans_point = trans * kinematik[i];
                 result[mapping.map_from(rigid_points[j])] = Point {
                     num: p_num,
-                    name: String::new(),
+                    name: p_name,
                     x: trans_point.x,
-                    y: trans_point.y
+                    y: trans_point.y,
                 }
             }
         } else {
@@ -981,27 +994,29 @@ fn displacements(kinematik: &DVectorf64, polplan: &DCoordMat, rigid: &Vec<RigidB
             for j in 0..rigid_points.len() {
                 let point = &points[mapping.map_from(rigid_points[j])];
                 let p_num = point.num;
-                let point = S2::new(point.x,point.y);
+                let p_name = point.name.clone();
+                let point = S2::new(point.x, point.y);
                 let dir = pos - point;
                 let dist = dir.norm();
                 let dir_normal = S2::new(dir.y, -dir.x).normalize();
-                let trans_point = point + dir_normal * dist * kinematik[i];
+                let trans_point = dir_normal * dist * kinematik[i];
                 result[mapping.map_from(rigid_points[j])] = Point {
                     num: p_num,
-                    name: String::new(),
+                    name: p_name,
                     x: trans_point.x,
-                    y: trans_point.y
+                    y: trans_point.y,
                 }
             }
         }
     }
-    println!("{:?}",result);
+    //println!("{:?}",result);
     return result;
 }
 
 fn main() {
     let (v, kant) = get_tragwerk();
-    let mapping = Mapping {
+    let loading = get_loading();
+    let _mapping = Mapping {
         map: sortPoints(&v),
     };
     // Erdscheibe hinzufügen
@@ -1012,14 +1027,18 @@ fn main() {
     let rigid = get_rigid_bodies(&v, &kant, &erd);
 
     let (rigid, pole) = polplan(&v, &rigid, &erd);
+    println!("{}", pole);
 
     let kin = kinematik(&pole).normalize();
-    println!("{}",kin);
+    println!("{}", kin);
 
     let displace = displacements(&kin, &pole, &rigid, &v);
+    println!("{:?}", displace);
 
-    visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole);
+    visualise(&"1.png", 720, 720, &v, &kant, &rigid, &erd, &pole, &loading);
     let rigid = get_rigid_bodies(&v, &kant, &erd);
     let rigid = filter_erdscheibe_ans_ende(&rigid, &erd);
-    visualise(&"2.png", 720, 720, &displace, &kant, &rigid, &erd, &pole);
+    visualise(
+        &"2.png", 720, 720, &displace, &kant, &rigid, &erd, &pole, &loading,
+    );
 }

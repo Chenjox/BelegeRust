@@ -1,3 +1,6 @@
+use std::f64::consts::PI;
+
+use nalgebra::{Matrix1, Matrix2};
 use numerals::roman::Roman;
 use plotters::coord::types::RangedCoordf64;
 use plotters::prelude::full_palette::{
@@ -6,9 +9,15 @@ use plotters::prelude::full_palette::{
 };
 use plotters::prelude::*;
 
-use crate::{sortPoints, Beam, DAdjUsize, DCoordMat, Mapping, Point, RigidBody};
+use crate::{sortPoints, Beam, DAdjUsize, DCoordMat, Load, Mapping, Point, RigidBody};
 
+type S2x2 = Matrix2<f64>;
 type TPoint = (f64, f64);
+
+//
+fn get_rot_matrix(angle: f64) -> S2x2 {
+    return S2x2::new(angle.cos(), -angle.sin(), angle.sin(), angle.cos());
+}
 
 // Is the turn counter clockwise?
 fn turn_counter_clockwise(p1: TPoint, p2: TPoint, p3: TPoint) -> bool {
@@ -94,7 +103,12 @@ fn draw_points<DB: DrawingBackend>(
         drawing_area
             .draw(
                 &(EmptyElement::at((i.x, i.y))
-                    + Circle::new((0, 0), 2, Into::<ShapeStyle>::into(&BLACK))),
+                    + Circle::new((0, 0), 2, Into::<ShapeStyle>::into(&BLACK))
+                    + Text::new(
+                        format!("{}", i.num),
+                        (10, -20),
+                        ("sans-serif", 12.0).into_font(),
+                    )),
             )
             .unwrap();
     }
@@ -208,7 +222,7 @@ fn draw_pole<DB: DrawingBackend>(
     let mut palette_iter = 0;
     for i in 0..pole.shape().0 {
         for j in i..pole.shape().1 {
-            let (x,y) = pole[(i, j)].get_real_coordinates();
+            let (x, y) = pole[(i, j)].get_real_coordinates();
             let infty = pole[(i, j)].is_at_infinity();
             if i == j && !infty {
                 drawing_area
@@ -232,7 +246,7 @@ fn draw_pole<DB: DrawingBackend>(
                 offset += visited_coords
                     .iter()
                     .filter(|&n: &&(f64, f64)| {
-                        ((n.0 - x).powi(2) + (n.1 - y).powi(2)).sqrt() < 16e-14
+                        ((n.0 - x).powi(2) + (n.1 - y).powi(2)).sqrt() < 16e-10
                     })
                     .count();
 
@@ -243,7 +257,7 @@ fn draw_pole<DB: DrawingBackend>(
                             + Circle::new((0, 0), 3, ShapeStyle::from(&BLUE).filled())
                             + Text::new(
                                 format!("({},{})", i + 1, j + 1),
-                                (-20 as i32, -20 - 20 * offset as i32),
+                                (-20 as i32, -20 - 20 * offset as i32), //
                                 ("sans-serif", 15.0).into_font(),
                             )),
                     )
@@ -256,6 +270,37 @@ fn draw_pole<DB: DrawingBackend>(
     }
 }
 
+fn draw_loads<DB: DrawingBackend>(
+    drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+    loads: &Vec<Load>,
+    points: &Vec<Point>,
+) {
+    let mapping = Mapping {
+        map: sortPoints(points),
+    };
+    for load in loads {
+        let point = &points[mapping.map_from(load.point)];
+        let coords = point.to_vector();
+        let loadvec = load.to_vector().normalize();
+        let begin_load = coords - loadvec * 1.1;
+        let end_load = coords - loadvec * 0.1;
+        let arrow1 = end_load - get_rot_matrix(PI / 4.0) * loadvec * 0.2;
+        let arrow2 = end_load - get_rot_matrix(-PI / 4.0) * loadvec * 0.2;
+        drawing_area
+            .draw(&PathElement::new(
+                vec![
+                    (begin_load.x, begin_load.y),
+                    (end_load.x, end_load.y),
+                    (arrow1.x, arrow1.y),
+                    (arrow2.x, arrow2.y),
+                    (end_load.x, end_load.y),
+                ],
+                &RED,
+            ))
+            .unwrap();
+    }
+}
+
 pub fn visualise(
     path: &str,
     res_x: u32,
@@ -265,6 +310,7 @@ pub fn visualise(
     rigidbodies: &Vec<RigidBody>,
     erdscheibe: &RigidBody,
     polplan: &DCoordMat,
+    loads: &Vec<Load>,
 ) {
     // Ein paar diagnosti
     let mut max_x: f64 = 0.0;
@@ -301,7 +347,8 @@ pub fn visualise(
     draw_points(&root, points);
     draw_beams(&root, points, beams);
     draw_rigid_bodies(&root, points, rigidbodies, erdscheibe);
-    draw_pole(&root, &polplan)
+    draw_pole(&root, &polplan);
+    draw_loads(&root, loads, points);
 
     // And if we want SVG backend
     // let backend = SVGBackend::new("output.svg", (800, 600));
