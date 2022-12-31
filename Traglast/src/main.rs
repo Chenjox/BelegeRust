@@ -74,16 +74,50 @@ impl Fachwerk2D {
     }
 
     pub fn matrix_form(&self) -> (Point2DMatrix, Beam2DMatrix) {
-        todo!("To be Implemented!");
+        let map: Vec<usize> = self.points.iter().map(|f| f.num).collect();
+        let mut p_matrix = Point2DMatrix::zeros(self.points.len());
+        let mut b_matrix = Beam2DMatrix::zeros(self.beams.len());
+        //for i in 0..map.len() {
+        //    if res == map[i] {
+        //        break;
+        //    }
+        //}
+        for p in 0..self.points.len() {
+            p_matrix[(0,p)] = self.points[p].coordinates.x;
+            p_matrix[(1,p)] = self.points[p].coordinates.y;
+        }
+        for b in 0..self.beams.len() {
+            let from = self.beams[b].from;
+            let to = self.beams[b].to;
+            let mut new_from = 0;
+            let mut new_to = 0;
+            for i in 0..map.len() {
+                if from == map[i] {
+                    new_from = i;
+                }
+                if to == map[i] {
+                    new_to = i;
+                }
+            }
+            b_matrix[(0,b)] = new_from;
+            b_matrix[(1,b)] = new_to;
+        }
+        //println!("{:?},{},{}",map, p_matrix, b_matrix);
+        return (p_matrix,b_matrix);
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct RigidBody {
-    pub points: Vec<usize>,
+    points: Vec<usize>,
 }
 
 impl RigidBody {
+    pub fn new(points: Vec<usize>) -> Self {
+        return RigidBody {
+            points
+        }
+    }
     fn is_joined_with(&self, other: &RigidBody) -> bool {
         let mut count = 0;
         for i in 0..self.points.len() {
@@ -112,7 +146,7 @@ impl RigidBody {
     }
 }
 
-fn get_tragwerk() -> (Vec<Point2D>, Vec<Beam2D>) {
+fn get_tragwerk() -> Fachwerk2D {
     let mut v = Vec::new();
 
     // Knoten (noch nicht in Koordinaten die ich brauch)
@@ -150,11 +184,27 @@ fn get_tragwerk() -> (Vec<Point2D>, Vec<Beam2D>) {
     kant.push(Beam2D::new(8, 16, 1.0));
     kant.push(Beam2D::new(14, 17, 1.0));
 
-    return (v, kant);
+    return Fachwerk2D::new(v, kant);
+}
+
+fn beams_to_rigid_bodies(beams: &Beam2DMatrix) -> Vec<RigidBody> {
+    let mut res = Vec::new();
+    for beam in 0..beams.shape().1 {
+        let points = vec![beams[(0,beam)],beams[(1,beam)]];
+        res.push(RigidBody::new(points));
+    }
+    return res;
 }
 
 fn main() {
     println!("Hello World");
+
+    let trag = get_tragwerk();
+    let (points,beams) = trag.matrix_form();
+    let rigidBodies = beams_to_rigid_bodies(&beams);
+    println!("{:?}",rigidBodies);
+    // rigid body physics!
+
     //let p = add_displacements(&v, &displace);
     //visualise(
     //    &"2.png",
