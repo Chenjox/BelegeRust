@@ -10,5 +10,6 @@
 members = [
     "VonMises",
     "LinOptimierung",
-    "traglast"
+    "traglast",
+    "drehwinkel"
 ]

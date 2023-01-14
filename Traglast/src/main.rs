@@ -1,8 +1,8 @@
 mod visualisation;
 
-use std::fmt::{Display,Formatter};
-use std::fmt;
 use nalgebra::{Dynamic, OMatrix, SMatrix, SVector, U2};
+use std::fmt;
+use std::fmt::{Display, Formatter};
 
 const ZERO_THRESHHOLD: f64 = 1e-10;
 
@@ -73,12 +73,16 @@ impl Beam2D {
 pub struct Fachwerk2D {
     points: Vec<Point2D>,
     beams: Vec<Beam2D>,
-    erdscheibe: Vec<usize>
+    erdscheibe: Vec<usize>,
 }
 
 impl Fachwerk2D {
     pub fn new(points: Vec<Point2D>, beams: Vec<Beam2D>, erdscheibe: Vec<usize>) -> Self {
-        return Fachwerk2D { points, beams, erdscheibe };
+        return Fachwerk2D {
+            points,
+            beams,
+            erdscheibe,
+        };
     }
 
     pub fn matrix_form(&self) -> (Point2DMatrix, Beam2DMatrix, Vec<usize>) {
@@ -91,8 +95,8 @@ impl Fachwerk2D {
         //    }
         //}
         for p in 0..self.points.len() {
-            p_matrix[(0,p)] = self.points[p].coordinates.x;
-            p_matrix[(1,p)] = self.points[p].coordinates.y;
+            p_matrix[(0, p)] = self.points[p].coordinates.x;
+            p_matrix[(1, p)] = self.points[p].coordinates.y;
         }
         for b in 0..self.beams.len() {
             let from = self.beams[b].from;
@@ -107,8 +111,8 @@ impl Fachwerk2D {
                     new_to = i;
                 }
             }
-            b_matrix[(0,b)] = new_from;
-            b_matrix[(1,b)] = new_to;
+            b_matrix[(0, b)] = new_from;
+            b_matrix[(1, b)] = new_to;
         }
         let mut erd_vec = vec![0; self.erdscheibe.len()];
         for i in 0..self.erdscheibe.len() {
@@ -122,7 +126,7 @@ impl Fachwerk2D {
             erd_vec[i] = new_index;
         }
         //println!("{:?},{},{}",map, p_matrix, b_matrix);
-        return (p_matrix,b_matrix,erd_vec);
+        return (p_matrix, b_matrix, erd_vec);
     }
 }
 
@@ -133,9 +137,7 @@ pub struct RigidBody {
 
 impl RigidBody {
     pub fn new(points: Vec<usize>) -> Self {
-        return RigidBody {
-            points
-        }
+        return RigidBody { points };
     }
     fn is_joined_with(&self, other: &RigidBody) -> bool {
         let mut count = 0;
@@ -191,14 +193,14 @@ fn join_rigid_bodies(index1: usize, index2: usize, bodies: &mut Vec<RigidBody>) 
 
 #[derive(Debug, PartialEq, Clone)]
 struct Pol {
-    coordinates: S3Vec
+    coordinates: S3Vec,
 }
 
 impl Pol {
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         return Pol {
-            coordinates: S3Vec::new(x,y,z)
-        }
+            coordinates: S3Vec::new(x, y, z),
+        };
     }
 
     pub fn infer(p1: &Pol, p2: &Pol, q1: &Pol, q2: &Pol) -> Self {
@@ -209,16 +211,18 @@ impl Pol {
         let new_pol = p_plane.cross(&q_plane);
         // Ist der Schnitt vllt der Nullschnitt?
         if new_pol.norm() < ZERO_THRESHHOLD {
-            return Pol::new(0.0,0.0,0.0);
-        }else {
+            return Pol::new(0.0, 0.0, 0.0);
+        } else {
             return Pol {
-                coordinates: new_pol.normalize()
-            }
+                coordinates: new_pol.normalize(),
+            };
         }
     }
 
     pub fn exists(&self) -> bool {
-        return !self.coordinates.x.is_nan() && !self.coordinates.y.is_nan() && !self.coordinates.z.is_nan();
+        return !self.coordinates.x.is_nan()
+            && !self.coordinates.y.is_nan()
+            && !self.coordinates.z.is_nan();
     }
 
     pub fn is_same(&self, other: &Pol) -> bool {
@@ -230,10 +234,16 @@ impl Display for Pol {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let coords = &self.coordinates;
         return if coords.z.abs() > ZERO_THRESHHOLD {
-            write!(f, "({},{},{})", coords.x/coords.z, coords.y/coords.z, 1.0)
+            write!(
+                f,
+                "({},{},{})",
+                coords.x / coords.z,
+                coords.y / coords.z,
+                1.0
+            )
         } else {
             write!(f, "({},{},{})", coords.x, coords.y, 0.0)
-        }
+        };
     }
 }
 
@@ -275,7 +285,7 @@ fn get_tragwerk() -> Fachwerk2D {
     kant.push(Beam2D::new(8, 16, 1.0));
     kant.push(Beam2D::new(14, 17, 1.0));
 
-    let erd = vec![18,17,16,15];
+    let erd = vec![18, 17, 16, 15];
 
     return Fachwerk2D::new(v, kant, erd);
 }
@@ -283,7 +293,7 @@ fn get_tragwerk() -> Fachwerk2D {
 fn beams_to_rigid_bodies(beams: &Beam2DMatrix) -> Vec<RigidBody> {
     let mut res = Vec::new();
     for beam in 0..beams.shape().1 {
-        let points = vec![beams[(0,beam)],beams[(1,beam)]];
+        let points = vec![beams[(0, beam)], beams[(1, beam)]];
         res.push(RigidBody::new(points));
     }
     return res;
@@ -292,28 +302,31 @@ fn beams_to_rigid_bodies(beams: &Beam2DMatrix) -> Vec<RigidBody> {
 fn polplan(rigid_bodies: &Vec<RigidBody>, erdscheibe: &Vec<usize>, points: &Point2DMatrix) {
     let mut rigid_bodies = rigid_bodies.clone();
     rigid_bodies.push(RigidBody::new(erdscheibe.clone())); // letzter Rigidbody ist erdscheibe
-    //
-    let erdscheiben_index = rigid_bodies.len()-1;
-    let scheiben = rigid_bodies.len()-1;
+                                                           //
+    let erdscheiben_index = rigid_bodies.len() - 1;
+    let scheiben = rigid_bodies.len() - 1;
     // Erdscheibe ist letzter Index!
-    let mut polplan = PolplanMatrix::from_element(scheiben, scheiben,Pol::new(f64::NAN,f64::NAN,f64::NAN));
+    let mut polplan =
+        PolplanMatrix::from_element(scheiben, scheiben, Pol::new(f64::NAN, f64::NAN, f64::NAN));
     // Alle Scheiben adjazent zur Erdscheibe bekommen einen Hauptpol
     let erdscheibe = &rigid_bodies[erdscheiben_index];
-    for i in 0..scheiben { // offenkundige Hauptpole
+    for i in 0..scheiben {
+        // offenkundige Hauptpole
         let scheibe = &rigid_bodies[i];
-        if erdscheibe.is_joined_with(scheibe) { // sollte das der Fall sein, sind beide Scheiben Erdscheiben
+        if erdscheibe.is_joined_with(scheibe) {
+            // sollte das der Fall sein, sind beide Scheiben Erdscheiben
             todo!("Two Rigidbodies share two points, are therefore a single rigid body!");
         }
         if let Some(point_index) = erdscheibe.get_connecting_point(scheibe) {
             let coords = points.column(point_index);
-            polplan[(i,i)] = Pol::new(coords.x, coords.y, 1.0);
+            polplan[(i, i)] = Pol::new(coords.x, coords.y, 1.0);
             //println!("({},{}) at {}",i,i,coords);
         }
     }
     // alle offenkundigen Nebenpole
     for i in 0..scheiben {
         let i_scheibe = &rigid_bodies[i];
-        for j in i+1..scheiben {
+        for j in i + 1..scheiben {
             let j_scheibe = &rigid_bodies[j];
             if i_scheibe.is_joined_with(j_scheibe) {
                 todo!("Two Rigidbodies share two points, are therefore a single rigid body!");
@@ -321,25 +334,24 @@ fn polplan(rigid_bodies: &Vec<RigidBody>, erdscheibe: &Vec<usize>, points: &Poin
             if let Some(point_index) = i_scheibe.get_connecting_point(j_scheibe) {
                 let coords = points.column(point_index);
                 let new_pol = Pol::new(coords.x, coords.y, 1.0);
-                if polplan[(i,j)].exists() && !polplan[(i,j)].is_same(&new_pol) {
+                if polplan[(i, j)].exists() && !polplan[(i, j)].is_same(&new_pol) {
                     todo!("Widerspruch im Nebenpol, beide müssen zusammengeführt werden!")
                 } else {
-                    polplan[(i,j)] = new_pol.clone();
-                    polplan[(j,i)] = new_pol;
+                    polplan[(i, j)] = new_pol.clone();
+                    polplan[(j, i)] = new_pol;
                 }
             }
         }
     }
-    println!("{}",polplan);
+    println!("{}", polplan);
     // Das offenkundige war Widerspruchsfrei, also kommt jetzt die Inzidenzmatrix
     // Für n Hauptpole gibt es ( n 2 ) hauptpolregeln und ( n 3 ) nebenpolregeln..
     // https://stackoverflow.com/a/57444840
 }
 
 fn main() {
-
     let trag = get_tragwerk();
-    let (points,beams,erdscheibe) = trag.matrix_form();
+    let (points, beams, erdscheibe) = trag.matrix_form();
     let rigid_bodies = beams_to_rigid_bodies(&beams);
     //println!("{:?}",rigid_bodies);
     polplan(&rigid_bodies, &erdscheibe, &points);
