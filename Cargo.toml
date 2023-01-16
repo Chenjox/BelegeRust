@@ -11,5 +11,6 @@ members = [
     "VonMises",
     "LinOptimierung",
     "traglast",
-    "drehwinkel"
+    "drehwinkel",
+    "dynamik_belege"
 ]
