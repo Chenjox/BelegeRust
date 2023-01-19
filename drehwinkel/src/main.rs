@@ -20,7 +20,7 @@ fn plot_moment_to_file(path: &str, c1: f64,
         .margin(5)
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f64..8f64, -200f64..100f64)
+        .build_cartesian_2d(0f64..8f64, -500f64..50f64)
         .unwrap();
 
     chart.configure_mesh().draw().unwrap();
