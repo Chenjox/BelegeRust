@@ -12,5 +12,6 @@ members = [
     "LinOptimierung",
     "traglast",
     "drehwinkel",
-    "dynamik_belege"
+    "dynamik_belege",
+    "misc"
 ]
