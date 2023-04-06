@@ -124,7 +124,7 @@ fn visualize(history: History) -> Result<(), Box<dyn std::error::Error>> {
     // After this point, we should be able to construct a chart context
     let mut chart = ChartBuilder::on(&root)
         // Set the caption of the chart
-        .caption("This is our first plot", ("sans-serif", 40).into_font())
+        .caption("Iterationsverlauf", ("sans-serif", 40).into_font())
         // Set the size of the label region
         .x_label_area_size(20)
         .y_label_area_size(40)
@@ -142,6 +142,7 @@ fn visualize(history: History) -> Result<(), Box<dyn std::error::Error>> {
         .draw()?;
 
     chart.draw_series(LineSeries::new(history.current, &RED))?;
+    chart.draw_series(LineSeries::new([(0.25,0.25),(0.25,1.0),(1.0,1.0),(1.0,0.25),(0.25,0.25)], &BLACK))?;
     // Similarly, we can draw point series
     chart.draw_series(PointSeries::of_element(
         history.next,
