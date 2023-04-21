@@ -14,5 +14,6 @@ members = [
     "traglast",
     "drehwinkel",
     "dynamik_belege",
+    "sensitivity",
     "misc"
 ]
