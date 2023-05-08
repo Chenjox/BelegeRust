@@ -15,5 +15,6 @@ members = [
     "drehwinkel",
     "dynamik_belege",
     "sensitivity",
+    "elast_gebettet",
     "misc"
 ]
