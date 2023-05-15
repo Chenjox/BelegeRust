@@ -137,15 +137,17 @@ fn main() {
     let mut hist = Vec::with_capacity((max_time/timestep) as usize);
     hist.push([0.0,v_0]);
 
-    let timestep_mat = &a + (&b * timestep/2.0);
-    let inv = timestep_mat.clone().qr_into().unwrap().inverse().unwrap();
+    let timestep_mat_1 = &a + (&b * timestep/2.0);
+    let inv = timestep_mat_1.clone().qr_into().unwrap().inverse().unwrap();
+
+    let timestep_mat_2 = &b * timestep/2.0 - &a;
     //println!("{}",inv);
     //println!("{}",inv.dot(&timestep_mat));
     println!("{},\n{}",a,b);
     loop {
         
-        let mut z_ip1 = z_i.dot(&timestep_mat);
-        let integral = ((belast_function(time+timestep) - belast_function(time))/2.0)*timestep;
+        let mut z_ip1 = -timestep_mat_2.dot(&z_i);
+        let integral = ((belast_function(time+timestep) + belast_function(time))/2.0)*timestep;
 
         z_ip1[0] = z_ip1[0] + integral;
         z_i = inv.dot(&z_ip1);
