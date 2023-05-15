@@ -127,9 +127,9 @@ fn main() {
         ]);
     let (a,b) = g.get_linear_isomorphism();
 
-    let timestep = 0.00001;
+    let timestep = 1e-5;
     let mut time = 0.0;
-    let max_time = 1.0;
+    let max_time = 1.5;
     let v_0 = 0.000;
     let mut z_i = Array1::zeros(a.shape()[0]);
     z_i[0]=v_0;
