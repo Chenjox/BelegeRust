@@ -22,6 +22,29 @@ fn rosenbrock_gradient(input_vec: &Vec<f64>) -> Vec<f64> {
     return result;
 }
 
+fn diff_of_squares(min: f64,max: f64,power: i32) -> f64 {
+    return max.powi(power) - min.powi(power)
+}
+
+fn gradient_sensitivity_s1(min: f64, max: f64, order: i32) -> f64 {
+
+    let c0 = 160000.0/7.0 * diff_of_squares(min, max, 7) + 1600.0/5.0 * diff_of_squares(min, max, 5)
+        - 1600.0/4.0 * diff_of_squares(min, max, 4) + 4.0/3.0 * diff_of_squares(min, max, 3) -4.0 * diff_of_squares(min, max, 2)
+        + 4.0 * diff_of_squares(min, max, 1);
+    let c1 = -320000.0/5.0 * diff_of_squares(min, max, 5) - 1600.0/3.0 * diff_of_squares(min, max, 3) + 1600.0*diff_of_squares(min, max, 2);
+    let c2 = 1.0/3.0 * diff_of_squares(min, max, 3);
+
+    let a = c0 * diff_of_squares(min, max, 1) + c1 * 0.5 * diff_of_squares(min, max, 2) + c2/3.0 * diff_of_squares(min, max, 3);
+
+    return a * diff_of_squares(min, max, 1).powi(order-2);
+}
+
+fn gradient_sensitivity_sn(min: f64, max: f64, order: i32) -> f64 {
+    return ( 40000.0/3.0 * diff_of_squares(min, max, 3)*diff_of_squares(min, max, 1)
+    - 40000.0/3.0 * diff_of_squares(min, max, 2) * diff_of_squares(min, max, 3)
+    + 40000.0/5.0 * diff_of_squares(min, max, 1) * diff_of_squares(min, max, 5) ) * diff_of_squares(min, max, order -2);
+}
+
 fn gaussian_integration() {
     let min = -2.046;
     let max = 2.046;
@@ -36,5 +59,10 @@ fn gaussian_integration() {
 }
 
 fn main() {
-    println!("Hello World");
+    let min = -2.046;
+    let max = 2.046;
+    let order = 5;
+    let s1 = gradient_sensitivity_s1(min, max, order);
+    let sn = gradient_sensitivity_sn(min, max, order);
+    println!("{},{}",s1,sn);
 }
