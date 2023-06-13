@@ -81,9 +81,9 @@ impl GebrochenRational {
 
 fn belast_function(time: f64) -> f64 {
     match time {
-        dt if float_interval![dt,0.0e-2,1.0e-2] => { (dt-1.0e-2)*100.0*1000.0 },
+        dt if float_interval![dt,0.0e-2,1.0e-2] => { (dt/(1.0e-2))*100.0*1000.0 },
         dt if float_interval![dt,1.0e-2,2.0e-2] => { 100.0*1000.0 },
-        dt if float_interval![dt,2.0e-2,3.0e-2] => { (2.0e-2-dt)*100.0*1000.0 },
+        dt if float_interval![dt,2.0e-2,3.0e-2] => { -((dt-3.0e-2)/(1.0e-2))*100.0*1000.0 },
         _ => { 0.0 }
     }
 }
