@@ -16,5 +16,6 @@ members = [
     "dynamik_belege",
     "sensitivity",
     "elast_gebettet",
+    "uncertainty",
     "misc"
 ]
