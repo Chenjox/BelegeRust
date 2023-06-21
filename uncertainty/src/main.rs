@@ -42,6 +42,46 @@ struct FuzzyTriangularNumber {
     upper: f64
 }
 
+impl FuzzyNumber for FuzzyTriangularNumber {
+
+    fn alpha_level_interval(&self,level: f64) -> [f64; 2] {
+        return [
+            level * (self.middle - self.lower) + self.lower,
+            (1.0 - level) * (self.upper - self.middle) +self.middle
+        ]
+    }
+
+    fn min(&self,level: f64) -> f64 {
+        level * (self.middle - self.lower) + self.lower
+    }
+
+    fn max(&self,level: f64) -> f64 {
+        (1.0 - level) * (self.upper - self.middle) +self.middle
+    }
+
+    fn area(&self) -> f64 {
+        0.5 * (self.upper - self.lower)
+    }
+
+    fn centroid(&self) -> f64 {
+        1.0/6.0 * ((2.0 * self.middle + self.lower)* (self.middle - self.lower)
+        + (2.0 * self.middle + self.upper) * (self.upper -self.middle)) * 1.0/self.area()
+    }
+
+    fn variance(&self) -> f64 {
+        todo!("Implement Variance")
+    }
+
+    fn entropy(&self) -> f64 {
+        todo!("Schannon's Entropy for the Triangular Fuzzy Number")
+    }
+    
+    fn level_set_cut(&self) -> f64 {
+        (self.lower + 2.0 * self.middle + self.upper) / 4.0
+    }
+
+}
+
 struct FuzzyTrapezoidalNumber {
     lower: f64,
     middle_lower: f64,
