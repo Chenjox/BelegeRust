@@ -17,5 +17,6 @@ members = [
     "sensitivity",
     "elast_gebettet",
     "uncertainty",
+    "stat_entwerfen",
     "misc"
 ]
