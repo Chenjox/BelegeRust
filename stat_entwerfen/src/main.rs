@@ -4,7 +4,7 @@ mod schrauben;
 
 use plotters::prelude::*;
 
-use crate::schrauben::ISOSchraube;
+use crate::schrauben::{ISOSchraube, SFK};
 
 fn plot_moment_to_file(path: &str, einzellast: f64, pos_last: f64, laenge: f64) {
   let root = BitMapBackend::new(path, (640, 480)).into_drawing_area();
@@ -183,10 +183,13 @@ fn main() {
     welast
   );
 
-  for i in ISOSchraube::get_schrauben_schneider() {
-    let s = ISOSchraube::new([10, 9], i, false);
-
-    println!("{},{}", s.flaeche_schraube(), s.spannungsflaeche_schraube());
+  for j in SFK::get_festigkeitsklassen_deutschland() {
+    for i in ISOSchraube::get_schrauben_schneider() {
+      let s = ISOSchraube::new(j, i, true);
+  
+      print!("{:3.2},", s.abscherkraft_schraube(false)/1000.0);
+    }
+    println!();
   }
 
   plot_moment_to_file("test.png", einzellast, pos_last, laenge)

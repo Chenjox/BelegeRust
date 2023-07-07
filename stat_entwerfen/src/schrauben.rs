@@ -116,6 +116,7 @@ impl ISOSchraube {
     let D2 = self.schraubengroesse - 3. / 4. * h;
     D2 - 2. * (h / 2. - h / 6.)
   }
+
   fn nennlochdurchmesser(&self) -> f64 {
     match self.schraubengroesse as u32 {
       12 => self.schraubengroesse + 1.0,
@@ -129,9 +130,33 @@ impl ISOSchraube {
       _ => panic!(),
     }
   }
+
+  fn schluesselweite(&self) -> f64 {
+    match self.schraubengroesse as u32 {
+      12 => 18.,
+      16 => 24.,
+      20 => 30.,
+      22 => 34.,
+      24 => 36.,
+      27 => 41.,
+      30 => 46.,
+      36 => 55.,
+      _ => panic!(),
+    }
+  }
+
+  fn eckenmass(&self) -> f64 {
+    self.schluesselweite() * 2.0/(3.0_f64).sqrt()
+  }
+
+  pub fn mittlerer_schraubenkopfdurchmesser(&self) -> f64 {
+    return self.schluesselweite() * 0.5 + self.eckenmass() * 0.5;
+  }
+
   pub fn spannungsflaeche_schraube(&self) -> f64 {
     ((self.flankendurchmesser() + self.kerndurchmesser()) / 2.).powi(2) / 4. * consts::PI
   }
+
   pub fn flaeche_schraube(&self) -> f64 {
     let d = if self.passschraube {
       self.schraubengroesse + 1.0
@@ -140,6 +165,7 @@ impl ISOSchraube {
     };
     d.powi(2) / 4.0 * consts::PI
   }
+
   pub fn abscherkraft_schraube(&self, ist_gewinde: bool) -> f64 {
     if !ist_gewinde {
       0.6 * self.festigkeitsklasse.zugfestigkeit() * self.flaeche_schraube() / 1.25
