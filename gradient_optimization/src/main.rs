@@ -142,7 +142,16 @@ fn visualize(history: History) -> Result<(), Box<dyn std::error::Error>> {
         .draw()?;
 
     chart.draw_series(LineSeries::new(history.current, &RED))?;
-    chart.draw_series(LineSeries::new([(0.25,0.25),(0.25,1.0),(1.0,1.0),(1.0,0.25),(0.25,0.25)], &BLACK))?;
+    chart.draw_series(LineSeries::new(
+        [
+            (0.25, 0.25),
+            (0.25, 1.0),
+            (1.0, 1.0),
+            (1.0, 0.25),
+            (0.25, 0.25),
+        ],
+        &BLACK,
+    ))?;
     // Similarly, we can draw point series
     chart.draw_series(PointSeries::of_element(
         history.next,
