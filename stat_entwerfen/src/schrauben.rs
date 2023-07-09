@@ -1,5 +1,6 @@
 use std::f64::consts;
 
+#[derive(Clone)]
 pub struct Schraubenfestigkeitsklasse {
   klasse: [u32; 2],
 }
@@ -22,6 +23,7 @@ impl Schraubenfestigkeitsklasse {
 
 pub type SFK = Schraubenfestigkeitsklasse;
 
+#[derive(Clone)]
 pub struct ISOSchraube {
   festigkeitsklasse: SFK,
   schraubengroesse: f64,
@@ -111,12 +113,13 @@ impl ISOSchraube {
     let dp = self.schraubengroesse - 2.0 * 3. / 8. * h;
     dp
   }
+  // in mm
   fn kerndurchmesser(&self) -> f64 {
     let h = 3.0_f64.sqrt() / 2.0 * self.gewindesteigung;
     let D2 = self.schraubengroesse - 3. / 4. * h;
     D2 - 2. * (h / 2. - h / 6.)
   }
-
+  /// in mm
   fn nennlochdurchmesser(&self) -> f64 {
     match self.schraubengroesse as u32 {
       12 => self.schraubengroesse + 1.0,
@@ -131,6 +134,7 @@ impl ISOSchraube {
     }
   }
 
+  /// in `mm`
   fn schluesselweite(&self) -> f64 {
     match self.schraubengroesse as u32 {
       12 => 18.,
@@ -145,27 +149,36 @@ impl ISOSchraube {
     }
   }
 
+  /// in `mm`
   fn eckenmass(&self) -> f64 {
     self.schluesselweite() * 2.0/(3.0_f64).sqrt()
   }
 
+  /// in `mm`
   pub fn mittlerer_schraubenkopfdurchmesser(&self) -> f64 {
     return self.schluesselweite() * 0.5 + self.eckenmass() * 0.5;
   }
 
+  /// in `mm^2`
   pub fn spannungsflaeche_schraube(&self) -> f64 {
     ((self.flankendurchmesser() + self.kerndurchmesser()) / 2.).powi(2) / 4. * consts::PI
   }
 
-  pub fn flaeche_schraube(&self) -> f64 {
-    let d = if self.passschraube {
+  pub fn schaftdurchmesser(&self) -> f64 {
+    if self.passschraube {
       self.schraubengroesse + 1.0
     } else {
       self.schraubengroesse
-    };
+    }
+  }
+
+  /// in `mm^2`
+  pub fn flaeche_schraube(&self) -> f64 {
+    let d = self.schaftdurchmesser();
     d.powi(2) / 4.0 * consts::PI
   }
 
+  /// in `N`
   pub fn abscherkraft_schraube(&self, ist_gewinde: bool) -> f64 {
     if !ist_gewinde {
       0.6 * self.festigkeitsklasse.zugfestigkeit() * self.flaeche_schraube() / 1.25
@@ -176,8 +189,31 @@ impl ISOSchraube {
     }
   }
 
+  /// in `N`
   pub fn zugkraft_schraube(&self, ist_senkschraube: bool) -> f64 {
     let k = if ist_senkschraube { 0.63 } else { 0.9 };
     return k * self.festigkeitsklasse.zugfestigkeit() * self.spannungsflaeche_schraube() / 1.25;
+  }
+}
+
+
+impl ISOSchraube {
+  pub fn durchstanzwiderstand(&self, blechdicke: f64, zugfestigkeit_blech: f64) -> f64 {
+    return 0.6 * consts::PI * self.mittlerer_schraubenkopfdurchmesser() * blechdicke * zugfestigkeit_blech / 1.25;
+  }
+
+  pub fn lochleibungswiderstand(&self,blechdicke: f64,  zugfestigkeit_blech: f64, p1: f64, e1: f64, p2: f64, e2: f64, innenliegend: bool) -> f64 {
+    let alpha1;
+    let k_1;
+    let d0 = self.nennlochdurchmesser();
+    if innenliegend {
+      alpha1 = (p1/(3.0*d0) - 0.25).min(self.festigkeitsklasse.zugfestigkeit() / zugfestigkeit_blech).min(1.);
+      k_1 = (1.4 * p2/d0 - 1.7).min(2.5);
+    } else {
+      alpha1 = (e1/(3.*d0)).min(self.festigkeitsklasse.zugfestigkeit() / zugfestigkeit_blech).min(1.);
+      k_1 = (2.8*e2/(d0) -1.7).min(1.4*p2/d0 -1.7).min(2.5)
+    }
+
+    return k_1 * alpha1 * zugfestigkeit_blech * self.schaftdurchmesser() * blechdicke /1.25;
   }
 }
