@@ -287,7 +287,7 @@ pub trait FuzzyAnalysis {
       alphas.sort_by(|a, b| a.partial_cmp(b).unwrap());
       alphas.reverse();
       let alphas = alphas;
-      println!("{:?}",alphas);
+      //println!("{:?}",alphas);
 
       let mut alpha_level_samples = Vec::<AlphaLevel>::new();
 
@@ -303,6 +303,7 @@ pub trait FuzzyAnalysis {
           mins[fz_num] =fuzz[fz_num].min(alpha_level);
           maxs[fz_num] =fuzz[fz_num].max(alpha_level);
         }
+        //println!("Min, Max = {:?},{:?}",mins,maxs);
         // Startpunkt in der Mitte, auf dem Alpha Level 1
         if !has_run_once {
           let mut initial = vec![0.0; n_fuzz];
@@ -324,6 +325,8 @@ pub trait FuzzyAnalysis {
 
         let min = self.deterministic_solution_function(&min_point);
         let max = self.deterministic_solution_function(&max_point);
+
+        //println!("{:?},{:?}",min_point,max_point);
 
         initial_min = min_point;
         initial_max = max_point;

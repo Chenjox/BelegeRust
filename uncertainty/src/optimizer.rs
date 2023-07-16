@@ -25,7 +25,7 @@ fn is_in_bounds(
 ) -> bool {
   let mut in_bound = true;
   for j in 0..n {
-      in_bound = in_bound && lower_bound[j] < value[j] && upper_bound[j] > value[j];
+      in_bound = in_bound && lower_bound[j] <= value[j] && upper_bound[j] >= value[j];
   }
   return in_bound;
 }
@@ -102,7 +102,7 @@ where
       // Werden mittels lerp erstellt.
       for i in 0..n {
           // nehme einen Schritt im Bereich
-          let interval = (start_point[i] + lower_bound[i]) * 0.5;
+          let interval = (start_point[i] - lower_bound[i]) * 0.5;
           // erstelle einen neuen punkt
           let mut new_point = vec![0.0; n];
           for k in 0..n {

@@ -8,19 +8,21 @@ use std::io::Write;
 mod fuzzy;
 mod optimizer;
 
-struct ExcentricBeam;
+struct ExcentricBeam {
+  levels: Vec<f64>
+}
 
 impl FuzzyAnalysis for ExcentricBeam {
     
     fn get_alpha_levels(&self) -> Vec<f64> {
-        return vec![1.0,0.95,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0.05,0.01,0.001,0.0001,1e-7,1e-10,0.0];
+        return self.levels.clone();
     }
 
     fn get_fuzzy_numbers(&self) -> Vec<Box<dyn FuzzyNumber>> {
         return vec![
-          Box::new(FuzzyTriangularNumber::new(0.1,0.2,0.5)), // Excentrizität
-          Box::new(FuzzyTriangularNumber::new(100.0,120.0,130.0)), // Kraft F
-          Box::new(FuzzyTriangularNumber::new(0.3,0.4,0.45)) // Stützenradius
+          Box::new(FuzzyTriangularNumber::new(0.15,0.2,0.3)), // Excentrizität
+          Box::new(FuzzyTriangularNumber::new(200.0,220.0,230.0)), // Kraft F
+          Box::new(FuzzyTriangularNumber::new(0.39,0.4,0.41)) // Stützenradius
         ];
     }
 
@@ -39,9 +41,23 @@ impl FuzzyAnalysis for ExcentricBeam {
     }
 }
 
+fn get_inters(low: f64, high: f64, num_samples: u32) -> Vec<f64> {
+  let step = 1./num_samples as f64;
+  let mut cum_step = 0.0;
+  let mut result = Vec::new();
+  for i in 0..=num_samples {
+    let interpolant = low * (1. - cum_step) + high * cum_step;
+    cum_step += step;
+    result.push(interpolant.min(high));
+  }
+  result
+}
+
 fn main() {
 
-  let ex = ExcentricBeam;
+  let ex = ExcentricBeam {
+    levels: get_inters(0.0, 1.0, 100)
+  };
 
   let eFN = ex.fuzzy_analysis();
 
@@ -61,9 +77,11 @@ fn main() {
     p += 0.1;
   }
 
-  println!("{:?}",eFN.get_lower_discrete_alpha_level(0.0));
+  //println!("{:?}",get_inters(0., 1., 50));
 
-  let sampling = eFN.membership_function_samplings(vec![1.0,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0.0]);
+
+
+  let sampling = eFN.membership_function_samplings(get_inters(0., 1., 100));
 
   let mut file = File::create("result.csv").unwrap();
   for record in sampling {
