@@ -1,256 +1,51 @@
-/// A public trait generalising the notion of a T1 Fuzzy Set.
-/// Will be used in the context of the Alpha-Level-Optimization.
-/// This considers only convex fuzzy numbers, non convex fuzzy sets are not considered
-pub trait FuzzyNumber {
-  /// Returns the interval for a igven alpha level.
-  /// [level] is considered to be in the range [0,1].
-  /// Should return a array containing [lower, upper].
-  /// alpha level 0 should return the support of the Fuzzy Number.
-  fn alpha_level_interval(&self, level: f64) -> [f64; 2];
+use std::{f64::consts::PI, fs::File};
 
-  /// Should return the lower bound of the given alpha level
-  fn min(&self, level: f64) -> f64;
-  /// Should return the upper bound of the given alpha level
-  fn max(&self, level: f64) -> f64;
+use fuzzy::{FuzzyAnalysis, FuzzyTriangularNumber};
 
-  /// Returns the support of the Fuzzy Number.
-  /// Should be same as alpha level 0.
-  fn support(&self) -> [f64; 2] {
-    return self.alpha_level_interval(0.0);
-  }
+use crate::fuzzy::{EmpiricalFuzzyNumber, FuzzyNumber};
+use std::io::Write;
 
-  /// Returns the Area of the Fuzzy Number
-  fn area(&self) -> f64;
+mod fuzzy;
+mod optimizer;
 
-  /// Returns the Variance of the Fuzzy Number
-  fn variance(&self) -> f64;
+struct ExcentricBeam;
 
-  /// Returns the SHANNON Entropy of the Fuzzy Number
-  fn entropy(&self) -> f64;
-
-  /// Returns the Centroid of the Fuzzy Number
-  fn centroid(&self) -> f64;
-
-  /// Returns the Alpha Level Cut of the Fuzzy Number
-  fn level_set_cut(&self) -> f64;
-}
-
-struct FuzzyTriangularNumber {
-  lower: f64,
-  middle: f64,
-  upper: f64,
-}
-
-impl FuzzyNumber for FuzzyTriangularNumber {
-  fn alpha_level_interval(&self, level: f64) -> [f64; 2] {
-    return [
-      level * (self.middle - self.lower) + self.lower,
-      (1.0 - level) * (self.upper - self.middle) + self.middle,
-    ];
-  }
-
-  fn min(&self, level: f64) -> f64 {
-    level * (self.middle - self.lower) + self.lower
-  }
-
-  fn max(&self, level: f64) -> f64 {
-    (1.0 - level) * (self.upper - self.middle) + self.middle
-  }
-
-  fn area(&self) -> f64 {
-    0.5 * (self.upper - self.lower)
-  }
-
-  fn centroid(&self) -> f64 {
-    1.0 / 6.0
-      * ((2.0 * self.middle + self.lower) * (self.middle - self.lower)
-        + (2.0 * self.middle + self.upper) * (self.upper - self.middle))
-      * 1.0
-      / self.area()
-  }
-
-  fn variance(&self) -> f64 {
-    todo!("Implement Variance")
-  }
-
-  fn entropy(&self) -> f64 {
-    todo!("Schannon's Entropy for the Triangular Fuzzy Number")
-  }
-
-  fn level_set_cut(&self) -> f64 {
-    (self.lower + 2.0 * self.middle + self.upper) / 4.0
-  }
-}
-
-struct FuzzyTrapezoidalNumber {
-  lower: f64,
-  middle_lower: f64,
-  middle_upper: f64,
-  upper: f64,
-}
-
-impl FuzzyNumber for FuzzyTrapezoidalNumber {
-  fn alpha_level_interval(&self, level: f64) -> [f64; 2] {
-    return [
-      level * (self.middle_lower - self.lower) + self.lower,
-      (1.0 - level) * (self.upper - self.middle_upper) + self.middle_upper,
-    ];
-  }
-
-  fn min(&self, level: f64) -> f64 {
-    level * (self.middle_lower - self.lower) + self.lower
-  }
-
-  fn max(&self, level: f64) -> f64 {
-    (1.0 - level) * (self.upper - self.middle_upper) + self.middle_upper
-  }
-
-  fn area(&self) -> f64 {
-    0.5 * (self.upper - self.lower + self.middle_upper - self.middle_lower)
-  }
-
-  fn centroid(&self) -> f64 {
-    todo!("Implement Centroid")
-  }
-
-  fn variance(&self) -> f64 {
-    todo!("Implement Variance")
-  }
-
-  fn entropy(&self) -> f64 {
-    todo!("Schannon's Entropy for the Triangular Fuzzy Number")
-  }
-
-  fn level_set_cut(&self) -> f64 {
-    todo!("Implement level set cut")
-  }
-}
-
-type AlphaLevel = (f64,[f64; 2]);
-
-struct EmpiricalFuzzyNumber {
-  samples: Vec<AlphaLevel>,
-}
-
-impl EmpiricalFuzzyNumber {
-
-  fn new(samples: Vec<AlphaLevel>) -> Self {
-    let mut samples = samples;
-    samples.sort_by(|a,b| a.0.partial_cmp(&b.0).unwrap());
-    return EmpiricalFuzzyNumber {
-      samples
-    };
-  }
-
-  fn get_discrete_alpha_levels(&self) -> Vec<f64> {
-    self.samples.iter().map(|f| f.0).collect()
-  }
-
-  /// Gives the lower discrete alpha level, that is closest to the given one.
-  fn get_lower_discrete_alpha_level(&self, alpha: f64) -> AlphaLevel {
-    let levels = &self.samples;
-
-    let mut result_level = (f64::NAN,[f64::NAN,f64::NAN]);
-    for level in levels.iter().rev() {
-      if level.0 <= alpha {
-        result_level = *level;
-        break;
-      }
-    }
-    return result_level;
-  }
-
-  /// Gives the upper discrete alpha level, that is closest to the given one.
-  fn get_upper_discrete_alpha_level(&self, alpha: f64) -> AlphaLevel {
-    let levels = &self.samples;
-
-    let mut result_level= (f64::NAN,[f64::NAN,f64::NAN]);
-    for level in levels {
-      if level.0 >= alpha {
-        result_level = *level;
-        break;
-      }
-    }
-    return result_level;
-  }
-
-}
-
-impl FuzzyNumber for EmpiricalFuzzyNumber {
-  fn alpha_level_interval(&self, level: f64) -> [f64; 2] {
-    // finden des Alpha-Level
-    let alph1 = self.get_lower_discrete_alpha_level(level);
-    let alph2 = self.get_upper_discrete_alpha_level(level);
-
-    if alph1.0 == alph2.0 {
-      return alph1.1;
+impl FuzzyAnalysis for ExcentricBeam {
+    
+    fn get_alpha_levels(&self) -> Vec<f64> {
+        return vec![1.0,0.95,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0.05,0.01,0.001,0.0001,1e-7,1e-10,0.0];
     }
 
-    let percent = ( level - alph1.0 )/(alph2.0 - alph1.0);
-
-    let downer = alph2.1[0] * percent + (1. - percent) * alph1.1[0];
-    let upper = alph2.1[1] * percent + (1. - percent) * alph1.1[1];
-
-    return [downer, upper];
-  }
-
-  fn min(&self, level: f64) -> f64 {
-    self.alpha_level_interval(level)[0]
-  }
-
-  fn max(&self, level: f64) -> f64 {
-    self.alpha_level_interval(level)[1]
-  }
-
-  fn area(&self) -> f64 {
-    let samples = &self.samples;
-
-    let mut result_area = 0.0;
-
-    for i in 0..samples.len()-1 {
-      let alpha1 = samples[i];
-      let alpha2 = samples[i+1];
-
-      let diff_alpha = alpha2.0    - alpha1.0;
-      let diff_lower = alpha1.1[1] - alpha1.1[0];
-      let diff_upper = alpha2.1[1] - alpha2.1[0];
-
-      //println!("{},{},{}",diff_alpha,diff_lower,diff_upper);
-
-      let area = (diff_lower + diff_upper)*diff_alpha * 0.5;
-      result_area += area;
+    fn get_fuzzy_numbers(&self) -> Vec<Box<dyn FuzzyNumber>> {
+        return vec![
+          Box::new(FuzzyTriangularNumber::new(0.1,0.2,0.5)), // Excentrizität
+          Box::new(FuzzyTriangularNumber::new(100.0,120.0,130.0)), // Kraft F
+          Box::new(FuzzyTriangularNumber::new(0.3,0.4,0.45)) // Stützenradius
+        ];
     }
 
-    return result_area;
-  }
+    fn deterministic_solution_function(&self,input_parameters: &Vec<f64>) -> f64 {
+        let excetricity = input_parameters[0];
+        let force = input_parameters[1];
+        let radius = input_parameters[2];
 
-  fn centroid(&self) -> f64 {
-    todo!("Implement Centroid")
-  }
+        let bending_moment = - force * excetricity;
 
-  fn variance(&self) -> f64 {
-    todo!("Implement Variance")
-  }
+        let area = PI * radius * radius;
+        let ftm = PI * radius * radius * radius * radius;
 
-  fn entropy(&self) -> f64 {
-    todo!("Schannon's Entropy for the Triangular Fuzzy Number")
-  }
-
-  fn level_set_cut(&self) -> f64 {
-    todo!("Implement level set cut")
-  }
+        let result = force / area - radius * bending_moment/ftm; // In kN/m^2
+        return result * 1e-3;
+    }
 }
 
 fn main() {
 
-  let vec = vec![
-    (0.0,[1.0,4.0]),
-    (1.0,[2.0,2.5]),
-    (0.5,[1.5,3.5]),
-  ];
+  let ex = ExcentricBeam;
 
-  let eFN = EmpiricalFuzzyNumber::new(vec);
+  let eFN = ex.fuzzy_analysis();
 
+  /*
   let eFNSamples = eFN.get_discrete_alpha_levels();
 
   println!("{:?}",eFNSamples);
@@ -258,7 +53,7 @@ fn main() {
   let alph1 = eFN.get_lower_discrete_alpha_level(0.6);
   let alph2 = eFN.get_upper_discrete_alpha_level(0.6);
   println!("{:?},{:?}",alph1, alph2);
-
+*/
   let mut p = 0.0;
   for n in 0..=10 {
     let a = eFN.alpha_level_interval(p);
@@ -266,7 +61,14 @@ fn main() {
     p += 0.1;
   }
 
-  println!("{}",eFN.area());
+  println!("{:?}",eFN.get_lower_discrete_alpha_level(0.0));
+
+  let sampling = eFN.membership_function_samplings(vec![1.0,0.9,0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1,0.0]);
+
+  let mut file = File::create("result.csv").unwrap();
+  for record in sampling {
+      write!(&mut file,"{},{}\n",record[0],record[1]).unwrap();
+  }
   
 
   println!("Hello World");
