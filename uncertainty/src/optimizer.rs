@@ -242,3 +242,7 @@ where
 {
   todo!()
 }
+
+fn project_onto_domain(lower_bound: &Vec<f64>,upper_bound: &Vec<f64>,point: &mut Vec<f64>){
+    
+}
