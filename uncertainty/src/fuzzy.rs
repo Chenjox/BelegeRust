@@ -1,4 +1,3 @@
-
 use crate::optimizer::{self, simplex_optimization};
 
 /// A public trait generalising the notion of a T1 Fuzzy Set.
@@ -40,12 +39,11 @@ pub trait FuzzyNumber {
   /// Returns the Membership-Function of the Fuzzy Number, sampled for certain alpha_levels
   /// Useful for plotting a Fuzzy Number
   fn membership_function_samplings(&self, alphas: Vec<f64>) -> Vec<[f64; 2]> {
-
     let mut result = Vec::new();
     for alpha in alphas {
       let alpha_level_interval = self.alpha_level_interval(alpha);
-      result.push([alpha_level_interval[0],alpha]);
-      result.push([alpha_level_interval[1],alpha]);
+      result.push([alpha_level_interval[0], alpha]);
+      result.push([alpha_level_interval[1], alpha]);
     }
     // Sortieren
     result.sort_by(|a, b| a[0].partial_cmp(&b[0]).unwrap());
@@ -60,14 +58,20 @@ pub struct FuzzyTriangularNumber {
 }
 
 impl FuzzyTriangularNumber {
-    pub fn new(lower: f64, middle: f64, upper: f64) -> Self {
-      if lower <= middle && middle <= upper {
-        return FuzzyTriangularNumber { lower, middle, upper}
-      } else {
-          panic!("The Values are not sorted in ascending order! {},{},{}", lower, middle, upper);
-      }
-
+  pub fn new(lower: f64, middle: f64, upper: f64) -> Self {
+    if lower <= middle && middle <= upper {
+      return FuzzyTriangularNumber {
+        lower,
+        middle,
+        upper,
+      };
+    } else {
+      panic!(
+        "The Values are not sorted in ascending order! {},{},{}",
+        lower, middle, upper
+      );
     }
+  }
 }
 
 impl FuzzyNumber for FuzzyTriangularNumber {
@@ -156,20 +160,17 @@ impl FuzzyNumber for FuzzyTrapezoidalNumber {
   }
 }
 
-type AlphaLevel = (f64,[f64; 2]);
+type AlphaLevel = (f64, [f64; 2]);
 
 pub struct EmpiricalFuzzyNumber {
   samples: Vec<AlphaLevel>,
 }
 
 impl EmpiricalFuzzyNumber {
-
   pub fn new(samples: Vec<AlphaLevel>) -> Self {
     let mut samples = samples;
-    samples.sort_by(|a,b| a.0.partial_cmp(&b.0).unwrap());
-    return EmpiricalFuzzyNumber {
-      samples
-    };
+    samples.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    return EmpiricalFuzzyNumber { samples };
   }
 
   pub fn get_discrete_alpha_levels(&self) -> Vec<f64> {
@@ -180,7 +181,7 @@ impl EmpiricalFuzzyNumber {
   pub fn get_lower_discrete_alpha_level(&self, alpha: f64) -> AlphaLevel {
     let levels = &self.samples;
 
-    let mut result_level = (f64::NAN,[f64::NAN,f64::NAN]);
+    let mut result_level = (f64::NAN, [f64::NAN, f64::NAN]);
     for level in levels.iter().rev() {
       if level.0 <= alpha {
         result_level = *level;
@@ -194,7 +195,7 @@ impl EmpiricalFuzzyNumber {
   pub fn get_upper_discrete_alpha_level(&self, alpha: f64) -> AlphaLevel {
     let levels = &self.samples;
 
-    let mut result_level= (f64::NAN,[f64::NAN,f64::NAN]);
+    let mut result_level = (f64::NAN, [f64::NAN, f64::NAN]);
     for level in levels {
       if level.0 >= alpha {
         result_level = *level;
@@ -203,7 +204,6 @@ impl EmpiricalFuzzyNumber {
     }
     return result_level;
   }
-
 }
 
 impl FuzzyNumber for EmpiricalFuzzyNumber {
@@ -216,7 +216,7 @@ impl FuzzyNumber for EmpiricalFuzzyNumber {
       return alph1.1;
     }
 
-    let percent = ( level - alph1.0 )/(alph2.0 - alph1.0);
+    let percent = (level - alph1.0) / (alph2.0 - alph1.0);
 
     let downer = alph2.1[0] * percent + (1. - percent) * alph1.1[0];
     let upper = alph2.1[1] * percent + (1. - percent) * alph1.1[1];
@@ -237,17 +237,17 @@ impl FuzzyNumber for EmpiricalFuzzyNumber {
 
     let mut result_area = 0.0;
 
-    for i in 0..samples.len()-1 {
+    for i in 0..samples.len() - 1 {
       let alpha1 = samples[i];
-      let alpha2 = samples[i+1];
+      let alpha2 = samples[i + 1];
 
-      let diff_alpha = alpha2.0    - alpha1.0;
+      let diff_alpha = alpha2.0 - alpha1.0;
       let diff_lower = alpha1.1[1] - alpha1.1[0];
       let diff_upper = alpha2.1[1] - alpha2.1[0];
 
       //println!("{},{},{}",diff_alpha,diff_lower,diff_upper);
 
-      let area = (diff_lower + diff_upper)*diff_alpha * 0.5;
+      let area = (diff_lower + diff_upper) * diff_alpha * 0.5;
       result_area += area;
     }
 
@@ -271,70 +271,68 @@ impl FuzzyNumber for EmpiricalFuzzyNumber {
   }
 }
 
-
 pub trait FuzzyAnalysis {
-    
-    fn deterministic_solution_function(&self,input_parameters: &Vec<f64>) -> f64;
+  fn deterministic_solution_function(&self, input_parameters: &Vec<f64>) -> f64;
 
-    fn get_fuzzy_numbers(&self) -> Vec<Box<dyn FuzzyNumber>>;
+  fn get_fuzzy_numbers(&self) -> Vec<Box<dyn FuzzyNumber>>;
 
-    fn get_alpha_levels(&self) -> Vec<f64>;
+  fn get_alpha_levels(&self) -> Vec<f64>;
 
-    fn fuzzy_analysis(&self) -> EmpiricalFuzzyNumber {
-      let fuzz = self.get_fuzzy_numbers();
-      let n_fuzz = fuzz.len();
-      let mut alphas = self.get_alpha_levels();
-      alphas.sort_by(|a, b| a.partial_cmp(b).unwrap());
-      alphas.reverse();
-      let alphas = alphas;
-      //println!("{:?}",alphas);
+  fn fuzzy_analysis(&self) -> EmpiricalFuzzyNumber {
+    let fuzz = self.get_fuzzy_numbers();
+    let n_fuzz = fuzz.len();
+    let mut alphas = self.get_alpha_levels();
+    alphas.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    alphas.reverse();
+    let alphas = alphas;
+    //println!("{:?}",alphas);
 
-      let mut alpha_level_samples = Vec::<AlphaLevel>::new();
+    let mut alpha_level_samples = Vec::<AlphaLevel>::new();
 
-      let mut has_run_once = false;
-      let mut initial_min = vec![0.0; n_fuzz];
-      let mut initial_max = vec![0.0; n_fuzz];
-      // Jedes Alpha Level
-      for alpha_level in alphas {
-        // Bekommt die Schranken
-        let mut mins = vec![0.; n_fuzz];
-        let mut maxs = vec![0.; n_fuzz];
-        for fz_num in 0..n_fuzz {
-          mins[fz_num] =fuzz[fz_num].min(alpha_level);
-          maxs[fz_num] =fuzz[fz_num].max(alpha_level);
+    let mut has_run_once = false;
+    let mut initial_min = vec![0.0; n_fuzz];
+    let mut initial_max = vec![0.0; n_fuzz];
+    // Jedes Alpha Level
+    for alpha_level in alphas {
+      // Bekommt die Schranken
+      let mut mins = vec![0.; n_fuzz];
+      let mut maxs = vec![0.; n_fuzz];
+      for fz_num in 0..n_fuzz {
+        mins[fz_num] = fuzz[fz_num].min(alpha_level);
+        maxs[fz_num] = fuzz[fz_num].max(alpha_level);
+      }
+      //println!("Min, Max = {:?},{:?}",mins,maxs);
+      // Startpunkt in der Mitte, auf dem Alpha Level 1
+      if !has_run_once {
+        let mut initial = vec![0.0; n_fuzz];
+        for i in 0..n_fuzz {
+          initial[i] = 0.5 * mins[i] + 0.5 * maxs[i];
         }
-        //println!("Min, Max = {:?},{:?}",mins,maxs);
-        // Startpunkt in der Mitte, auf dem Alpha Level 1
-        if !has_run_once {
-          let mut initial = vec![0.0; n_fuzz];
-          for i in 0..n_fuzz {
-              initial[i] = 0.5 *mins[i] + 0.5 * maxs[i];
-          }
-          initial_min = initial.clone();
-          initial_max = initial;
-          has_run_once = true;
-        }
-
-        let f = |vl: &Vec<f64>| (self.deterministic_solution_function(vl));
-        let f2 = |vl: &Vec<f64>| (-self.deterministic_solution_function(vl));
-
-        // Minimum
-        let min_point = simplex_optimization(&mins, &maxs, &initial_min, f);
-        // Maximum
-        let max_point = simplex_optimization(&mins, &maxs, &initial_max, f2);
-
-        let min = self.deterministic_solution_function(&min_point);
-        let max = self.deterministic_solution_function(&max_point);
-
-        //println!("{:?},{:?}",min_point,max_point);
-
-        initial_min = min_point;
-        initial_max = max_point;
-
-        let e_alpha_level = (alpha_level, [min, max]);
-        alpha_level_samples.push(e_alpha_level);
+        initial_min = initial.clone();
+        initial_max = initial;
+        has_run_once = true;
       }
 
-      return EmpiricalFuzzyNumber::new(alpha_level_samples);
+      let f = |vl: &Vec<f64>| (self.deterministic_solution_function(vl));
+      let f2 = |vl: &Vec<f64>| (-self.deterministic_solution_function(vl));
+
+      // Minimum
+      let min_point = simplex_optimization(&mins, &maxs, &initial_min, f);
+      // Maximum
+      let max_point = simplex_optimization(&mins, &maxs, &initial_max, f2);
+
+      let min = self.deterministic_solution_function(&min_point);
+      let max = self.deterministic_solution_function(&max_point);
+
+      //println!("{:?},{:?}",min_point,max_point);
+
+      initial_min = min_point;
+      initial_max = max_point;
+
+      let e_alpha_level = (alpha_level, [min, max]);
+      alpha_level_samples.push(e_alpha_level);
     }
+
+    return EmpiricalFuzzyNumber::new(alpha_level_samples);
+  }
 }

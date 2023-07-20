@@ -151,7 +151,7 @@ impl ISOSchraube {
 
   /// in `mm`
   fn eckenmass(&self) -> f64 {
-    self.schluesselweite() * 2.0/(3.0_f64).sqrt()
+    self.schluesselweite() * 2.0 / (3.0_f64).sqrt()
   }
 
   /// in `mm`
@@ -196,24 +196,41 @@ impl ISOSchraube {
   }
 }
 
-
 impl ISOSchraube {
   pub fn durchstanzwiderstand(&self, blechdicke: f64, zugfestigkeit_blech: f64) -> f64 {
-    return 0.6 * consts::PI * self.mittlerer_schraubenkopfdurchmesser() * blechdicke * zugfestigkeit_blech / 1.25;
+    return 0.6
+      * consts::PI
+      * self.mittlerer_schraubenkopfdurchmesser()
+      * blechdicke
+      * zugfestigkeit_blech
+      / 1.25;
   }
 
-  pub fn lochleibungswiderstand(&self,blechdicke: f64,  zugfestigkeit_blech: f64, p1: f64, e1: f64, p2: f64, e2: f64, innenliegend: bool) -> f64 {
+  pub fn lochleibungswiderstand(
+    &self,
+    blechdicke: f64,
+    zugfestigkeit_blech: f64,
+    p1: f64,
+    e1: f64,
+    p2: f64,
+    e2: f64,
+    innenliegend: bool,
+  ) -> f64 {
     let alpha1;
     let k_1;
     let d0 = self.nennlochdurchmesser();
     if innenliegend {
-      alpha1 = (p1/(3.0*d0) - 0.25).min(self.festigkeitsklasse.zugfestigkeit() / zugfestigkeit_blech).min(1.);
-      k_1 = (1.4 * p2/d0 - 1.7).min(2.5);
+      alpha1 = (p1 / (3.0 * d0) - 0.25)
+        .min(self.festigkeitsklasse.zugfestigkeit() / zugfestigkeit_blech)
+        .min(1.);
+      k_1 = (1.4 * p2 / d0 - 1.7).min(2.5);
     } else {
-      alpha1 = (e1/(3.*d0)).min(self.festigkeitsklasse.zugfestigkeit() / zugfestigkeit_blech).min(1.);
-      k_1 = (2.8*e2/(d0) -1.7).min(1.4*p2/d0 -1.7).min(2.5)
+      alpha1 = (e1 / (3. * d0))
+        .min(self.festigkeitsklasse.zugfestigkeit() / zugfestigkeit_blech)
+        .min(1.);
+      k_1 = (2.8 * e2 / (d0) - 1.7).min(1.4 * p2 / d0 - 1.7).min(2.5)
     }
 
-    return k_1 * alpha1 * zugfestigkeit_blech * self.schaftdurchmesser() * blechdicke /1.25;
+    return k_1 * alpha1 * zugfestigkeit_blech * self.schaftdurchmesser() * blechdicke / 1.25;
   }
 }

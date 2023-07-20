@@ -1,9 +1,9 @@
 use std::f64::consts;
 
-mod schrauben;
 mod bleche;
+mod schrauben;
 
-use bleche::{Stahlblech, Schraubenverbindung};
+use bleche::{Schraubenverbindung, Stahlblech};
 use plotters::prelude::*;
 
 use crate::schrauben::{ISOSchraube, SFK};
@@ -125,11 +125,11 @@ fn nachweis_stirnplattenstoss(
   blechdicke: f64,
   blechhoehe: f64,
   schraubendurchmesser: u32,
-  sfk: [u32;2]
+  sfk: [u32; 2],
 ) {
   let blech = Stahlblech::new(blechdicke, blechhoehe, 200.0, 235.);
-  
-  let s = ISOSchraube::new(sfk,schraubendurchmesser, false);
+
+  let s = ISOSchraube::new(sfk, schraubendurchmesser, false);
 
   let x = 30.0;
   let y1 = 30.0;
@@ -146,9 +146,9 @@ fn nachweis_stirnplattenstoss(
   //  ([x2,y2],s.clone()),
   //  ([x2,y3],s.clone()),
   //];
-//
+  //
   //let sch = Schraubenverbindung::new(blech, schraub);
-//
+  //
   //for i in 0..6 {
   //  println!("{:?}",sch.randabstaende(i));
   //}
@@ -156,7 +156,12 @@ fn nachweis_stirnplattenstoss(
   let wid1 = s.abscherkraft_schraube(false);
   let wid2 = s.durchstanzwiderstand(blechdicke, 235.);
   let wid3 = s.zugkraft_schraube(false);
-  println!("Abscherkraft = {}\n Durchstanz = {}\n Zugkraft = {}",wid1/1000.,wid2/1000.,wid3/1000.);
+  println!(
+    "Abscherkraft = {}\n Durchstanz = {}\n Zugkraft = {}",
+    wid1 / 1000.,
+    wid2 / 1000.,
+    wid3 / 1000.
+  );
 }
 
 fn nachweis_biegedrillknicken(Ncr: f64, wy: f64, festigkeit: f64) {}
@@ -217,8 +222,8 @@ fn main() {
   for j in SFK::get_festigkeitsklassen_deutschland() {
     for i in ISOSchraube::get_schrauben_schneider() {
       let s = ISOSchraube::new(j, i, true);
-  
-      print!("{:3.2},", s.abscherkraft_schraube(false)/1000.0);
+
+      print!("{:3.2},", s.abscherkraft_schraube(false) / 1000.0);
     }
     println!();
   }
@@ -226,5 +231,5 @@ fn main() {
   plot_moment_to_file("test.png", einzellast, pos_last, laenge);
 
   //
-  nachweis_stirnplattenstoss(LF1_moment_stirn, LF1_moment_mitte, 20., 190., 16, [10,9])
+  nachweis_stirnplattenstoss(LF1_moment_stirn, LF1_moment_mitte, 20., 190., 16, [10, 9])
 }
