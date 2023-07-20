@@ -1,4 +1,4 @@
-use crate::optimizer::{self, simplex_optimization};
+use crate::optimizer::{self, simplex_optimization, such_optimierung};
 
 /// A public trait generalising the notion of a T1 Fuzzy Set.
 /// Will be used in the context of the Alpha-Level-Optimization.
@@ -317,9 +317,9 @@ pub trait FuzzyAnalysis {
       let f2 = |vl: &Vec<f64>| (-self.deterministic_solution_function(vl));
 
       // Minimum
-      let min_point = simplex_optimization(&mins, &maxs, &initial_min, f);
+      let min_point = such_optimierung(&mins, &maxs, &initial_min, f);
       // Maximum
-      let max_point = simplex_optimization(&mins, &maxs, &initial_max, f2);
+      let max_point = such_optimierung(&mins, &maxs, &initial_max, f2);
 
       let min = self.deterministic_solution_function(&min_point);
       let max = self.deterministic_solution_function(&max_point);

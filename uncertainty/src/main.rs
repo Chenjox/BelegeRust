@@ -36,7 +36,7 @@ impl FuzzyAnalysis for ExcentricBeam {
     let ftm = PI * radius * radius * radius * radius;
 
     let result = force / area - radius * bending_moment / ftm; // In kN/m^2
-    return result * 1e-3;
+    return result;
   }
 }
 
@@ -54,7 +54,7 @@ fn get_inters(low: f64, high: f64, num_samples: u32) -> Vec<f64> {
 
 fn main() {
   let ex = ExcentricBeam {
-    levels: get_inters(0.0, 1.0, 50),
+    levels: get_inters(0.0, 1.0, 100),
   };
 
   let eFN = ex.fuzzy_analysis();
