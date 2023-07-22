@@ -269,6 +269,7 @@ where
       let mut norm = 0.; // Normierungssumme
       for d in 0..dimension {
         let coord: f64 = rng.gen();
+        let coord = coord * 2. -1.;
         direction[d] = coord;
         norm += coord * coord;
       }
