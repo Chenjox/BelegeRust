@@ -54,7 +54,7 @@ fn get_inters(low: f64, high: f64, num_samples: u32) -> Vec<f64> {
 
 fn main() {
   let ex = ExcentricBeam {
-    levels: vec![0.0,0.5,1.0]//get_inters(0.0, 1.0, 3),
+    levels: vec![0.0, 0.5, 1.0], //get_inters(0.0, 1.0, 3),
   };
 
   let eFN = ex.fuzzy_analysis();
@@ -83,5 +83,4 @@ fn main() {
   for record in sampling {
     write!(&mut file, "{},{}\n", record[0], record[1]).unwrap();
   }
-
 }

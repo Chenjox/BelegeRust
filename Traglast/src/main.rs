@@ -2,9 +2,9 @@ mod visualisation;
 
 mod svd_helper;
 
-use num_integer::binomial;
 use itertools::Itertools;
-use nalgebra::{Dyn, OMatrix, SMatrix, SVector, U2, Matrix};
+use nalgebra::{Dyn, Matrix, OMatrix, SMatrix, SVector, U2};
+use num_integer::binomial;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -13,7 +13,7 @@ const ZERO_THRESHHOLD: f64 = 1e-10;
 type S2Vec = SVector<f64, 2>;
 type S3Vec = SVector<f64, 3>;
 
-type Point2DMatrix = OMatrix<f64, U2,  Dyn>;
+type Point2DMatrix = OMatrix<f64, U2, Dyn>;
 type Beam2DMatrix = OMatrix<usize, U2, Dyn>;
 type RigidMatrix = OMatrix<f64, Dyn, Dyn>;
 type IncidenceMatrix = OMatrix<usize, Dyn, Dyn>;
@@ -356,15 +356,12 @@ fn polplan(rigid_bodies: &Vec<RigidBody>, erdscheibe: &Vec<usize>, points: &Poin
 
 fn get_testtragwerk() -> Fachwerk2D {
   let points = vec![
-    Point2D::new(0,0.,0.),
-    Point2D::new(1,1.,0.),
-    Point2D::new(2,3.,0.)
+    Point2D::new(0, 0., 0.),
+    Point2D::new(1, 1., 0.),
+    Point2D::new(2, 3., 0.),
   ];
-  let beams = vec![
-    Beam2D::new(0,1,10.),
-    Beam2D::new(1,2,10.)
-  ];
-  let erd = vec![ 0, 2];
+  let beams = vec![Beam2D::new(0, 1, 10.), Beam2D::new(1, 2, 10.)];
+  let erd = vec![0, 2];
 
   return Fachwerk2D::new(points, beams, erd);
 }
@@ -373,22 +370,22 @@ fn main() {
   let trag = get_testtragwerk();
   let (points, beams, erdscheibe) = trag.matrix_form();
 
-  let erdscheiben_connections = binomial(erdscheibe.len(),2);
-  let mut mat = RigidMatrix::zeros(beams.ncols() +erdscheiben_connections, points.ncols() * 2);
+  let erdscheiben_connections = binomial(erdscheibe.len(), 2);
+  let mut mat = RigidMatrix::zeros(beams.ncols() + erdscheiben_connections, points.ncols() * 2);
 
   let num_beams = beams.ncols();
   let num_points = points.ncols();
   for i in 0..num_beams {
-    let from_point = beams[(0,i)];
-    let to_point = beams[(1,i)];
+    let from_point = beams[(0, i)];
+    let to_point = beams[(1, i)];
 
-    let x_diff = points[(0,from_point)] -  points[(0,to_point)];
-    let y_diff = points[(1,from_point)] -  points[(1,to_point)];
+    let x_diff = points[(0, from_point)] - points[(0, to_point)];
+    let y_diff = points[(1, from_point)] - points[(1, to_point)];
 
-    mat[(i,2*from_point)] = x_diff;
-    mat[(i,2*from_point+1)] = y_diff;
-    mat[(i,2*to_point)] = -x_diff;
-    mat[(i,2*to_point+1)] = -y_diff;
+    mat[(i, 2 * from_point)] = x_diff;
+    mat[(i, 2 * from_point + 1)] = y_diff;
+    mat[(i, 2 * to_point)] = -x_diff;
+    mat[(i, 2 * to_point + 1)] = -y_diff;
   }
 
   let mut start = num_beams;
@@ -396,25 +393,25 @@ fn main() {
     let from_point = *i[0];
     let to_point = *i[1];
 
-    let x_diff = points[(0,from_point)] -  points[(0,to_point)];
-    let y_diff = points[(1,from_point)] -  points[(1,to_point)];
+    let x_diff = points[(0, from_point)] - points[(0, to_point)];
+    let y_diff = points[(1, from_point)] - points[(1, to_point)];
 
-    mat[(start,2*from_point)] = x_diff;
-    mat[(start,2*from_point+1)] = y_diff;
-    mat[(start,2*to_point)] = -x_diff;
-    mat[(start,2*to_point+1)] = -y_diff;
-    start+=1;
+    mat[(start, 2 * from_point)] = x_diff;
+    mat[(start, 2 * from_point + 1)] = y_diff;
+    mat[(start, 2 * to_point)] = -x_diff;
+    mat[(start, 2 * to_point + 1)] = -y_diff;
+    start += 1;
   }
 
-  println!("{}",mat);
-  println!("{:?}",mat.shape());
-  println!("{}",num_points * 2-mat.rank(1e-16));
-  
-  let mat = mat;
-  let s = OMatrix::<f64,Dyn,Dyn>::zeros(mat.nrows().min(mat.ncols()),mat.nrows().min(mat.ncols()));
-  let u = OMatrix::<f64,Dyn,Dyn>::zeros(mat.nrows(),mat.nrows());
-  let v = OMatrix::<f64,Dyn,Dyn>::zeros(mat.ncols(),mat.ncols());
+  println!("{}", mat);
+  println!("{:?}", mat.shape());
+  println!("{}", num_points * 2 - mat.rank(1e-16));
 
+  let mat = mat;
+  let s =
+    OMatrix::<f64, Dyn, Dyn>::zeros(mat.nrows().min(mat.ncols()), mat.nrows().min(mat.ncols()));
+  let u = OMatrix::<f64, Dyn, Dyn>::zeros(mat.nrows(), mat.nrows());
+  let v = OMatrix::<f64, Dyn, Dyn>::zeros(mat.ncols(), mat.ncols());
 
   // rigid body physics!
 

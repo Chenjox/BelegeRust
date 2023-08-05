@@ -1,13 +1,12 @@
 use faer_svd::compute_svd;
-use nalgebra::{OMatrix, Dyn};
+use nalgebra::{Dyn, OMatrix};
 
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 
 type GenMatrix = OMatrix<f64, Dyn, Dyn>;
 
-fn get_svd_decomp(mat: GenMatrix) -> (u,s,v){
-
+fn get_svd_decomp(mat: GenMatrix) -> (u, s, v) {
   let n = mat.nrows();
   let m = mat.ncols();
 
@@ -15,7 +14,7 @@ fn get_svd_decomp(mat: GenMatrix) -> (u,s,v){
 
   for i in 0..n {
     for j in 0..m {
-      c.write(i, j, mat[(i,j)]);
+      c.write(i, j, mat[(i, j)]);
     }
   }
 
@@ -25,16 +24,26 @@ fn get_svd_decomp(mat: GenMatrix) -> (u,s,v){
 
   let mut mem = GlobalMemBuffer::new(
     faer_svd::compute_svd_req::<f64>(
-        4096,
-        n,
-        faer_svd::ComputeVectors::Thin,
-        faer_svd::ComputeVectors::Thin,
-        Parallelism::None,
-        faer_svd::SvdParams::default(),
+      4096,
+      n,
+      faer_svd::ComputeVectors::Thin,
+      faer_svd::ComputeVectors::Thin,
+      Parallelism::None,
+      faer_svd::SvdParams::default(),
     )
     .unwrap(),
-);
-let mut stack = DynStack::new(&mut mem);
+  );
+  let mut stack = DynStack::new(&mut mem);
 
-  compute_svd(c.as_ref(), s.as_mut(), Some(u.as_mut()), Some(v.as_mut()), 1e-10, 1e-16, Parallelism::None, stack.rb_mut(), faer_svd::SvdParams::default())
-};
+  compute_svd(
+    c.as_ref(),
+    s.as_mut(),
+    Some(u.as_mut()),
+    Some(v.as_mut()),
+    1e-10,
+    1e-16,
+    Parallelism::None,
+    stack.rb_mut(),
+    faer_svd::SvdParams::default(),
+  )
+}

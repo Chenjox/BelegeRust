@@ -269,7 +269,7 @@ where
       let mut norm = 0.; // Normierungssumme
       for d in 0..dimension {
         let coord: f64 = rng.gen();
-        let coord = coord * 2. -1.;
+        let coord = coord * 2. - 1.;
         direction[d] = coord;
         norm += coord * coord;
       }
@@ -288,7 +288,7 @@ where
 
       let function_value = func(&new_point);
       // Abspeichern der Kinder
-      iter_result.push((new_point,function_value));
+      iter_result.push((new_point, function_value));
     }
     let mut better_count = 0;
     // Durchzählen
@@ -298,7 +298,7 @@ where
       }
     }
     // Erfolg, oder nicht erfolg
-    if better_count as f64/anzahl_kinder as f64 >= 0.1 {
+    if better_count as f64 / anzahl_kinder as f64 >= 0.1 {
       iter_result.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
       let (point, value) = &iter_result[0];
       current_point = point.clone();
