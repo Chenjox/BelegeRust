@@ -9,6 +9,8 @@ use plotters::prelude::full_palette::{
 };
 use plotters::prelude::*;
 
+use crate::{Beam2DMatrix, Point2DMatrix};
+
 type S2x2 = Matrix2<f64>;
 type TPoint = (f64, f64);
 
@@ -93,9 +95,86 @@ static PALETTE: [RGBColor; 10] = [
   BLUEGREY_800,
 ];
 
-pub fn visualise(path: &str) {
+pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, beams: &Beam2DMatrix) {
   // Ein paar diagnosti
+  let mut max_x: f64 = 0.0;
+  let mut min_x: f64 = 0.0;
+  let mut max_y: f64 = 0.0;
+  let mut min_y: f64 = 0.0;
+  let num_points = points.ncols();
+  for i in 0..num_points {
+    max_x = max_x.max(points[(0, i)]);
+    min_x = min_x.min(points[(0, i)]);
+    max_y = max_y.max(points[(1, i)]);
+    min_y = min_y.min(points[(1, i)]);
+  }
+  //for i in polplan.iter() {
+  //    if !i.is_at_infinity() {
+  //        max_x = max_x.max(i.x);
+  //        min_x = min_x.min(i.x);
+  //        max_y = max_y.max(i.y);
+  //        min_y = min_y.min(i.y);
+  //    }
+  //}
+  //
+  let max = max_x.max(max_y);
+  let min = min_x.min(min_y);
+  let margin = 40;
+  let root = BitMapBackend::new(path, (res_x, res_y))
+    .into_drawing_area()
+    .apply_coord_spec(Cartesian2d::<RangedCoordf64, RangedCoordf64>::new(
+      min..max,
+      max..min,
+      (40..(res_x - margin) as i32, 40..(res_y - margin) as i32),
+    ));
+  root.fill(&WHITE).unwrap();
 
+  draw_points(&root, &points);
+  draw_beams(&root, points, beams);
   // And if we want SVG backend
   // let backend = SVGBackend::new("output.svg", (800, 600));
+}
+
+fn draw_points<DB: DrawingBackend>(
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+  points: &Point2DMatrix,
+) {
+  let mut num = 0;
+  for i in points.column_iter() {
+    drawing_area
+      .draw(
+        &(EmptyElement::at((i.x, i.y))
+          + Circle::new((0, 0), 2, Into::<ShapeStyle>::into(&BLACK))
+          + Text::new(
+            format!("{}", num),
+            (10, -20),
+            ("sans-serif", 12.0).into_font(),
+          )),
+      )
+      .unwrap();
+    num += 1;
+  }
+}
+
+fn draw_beams<DB: DrawingBackend>(
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+  points: &Point2DMatrix,
+  beams: &Beam2DMatrix,
+) {
+  for i in beams.column_iter() {
+    let from = i.x;
+    let to = i.y;
+    let mut line_points = Vec::new();
+    {
+      let po = points.column(from);
+      line_points.push((po.x, po.y));
+    }
+    {
+      let po = points.column(to);
+      line_points.push((po.x, po.y));
+    }
+    drawing_area
+      .draw(&Polygon::new(line_points, &BLACK))
+      .unwrap();
+  }
 }

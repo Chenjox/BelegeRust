@@ -8,6 +8,8 @@ use num_integer::binomial;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
+use crate::svd_helper::get_svd_decomp;
+
 const ZERO_THRESHHOLD: f64 = 1e-10;
 
 type S2Vec = SVector<f64, 2>;
@@ -356,12 +358,21 @@ fn polplan(rigid_bodies: &Vec<RigidBody>, erdscheibe: &Vec<usize>, points: &Poin
 
 fn get_testtragwerk() -> Fachwerk2D {
   let points = vec![
-    Point2D::new(0, 0., 0.),
-    Point2D::new(1, 1., 0.),
-    Point2D::new(2, 3., 0.),
+    Point2D::new(0, 10.*0., 10.*0.),
+    Point2D::new(1, 10.*2., 10.*0.),
+    Point2D::new(2, 10.*3., 10.*0.),
+    Point2D::new(3, 10.*2., 10.*-1.),
+    Point2D::new(4, 10.*2., 10.*-2.),
   ];
-  let beams = vec![Beam2D::new(0, 1, 10.), Beam2D::new(1, 2, 10.)];
-  let erd = vec![0, 2];
+  let beams = vec![
+    Beam2D::new(0, 1, 10.), 
+    Beam2D::new(1, 2, 10.),
+    Beam2D::new(2, 3, 10.),
+    Beam2D::new(2, 4, 10.),
+    Beam2D::new(0, 3, 10.),
+    Beam2D::new(0, 4, 10.),
+    Beam2D::new(3, 4, 10.)];
+  let erd = vec![];
 
   return Fachwerk2D::new(points, beams, erd);
 }
@@ -388,6 +399,7 @@ fn main() {
     mat[(i, 2 * to_point + 1)] = -y_diff;
   }
 
+  
   let mut start = num_beams;
   for i in erdscheibe.iter().combinations(2) {
     let from_point = *i[0];
@@ -406,12 +418,36 @@ fn main() {
   println!("{}", mat);
   println!("{:?}", mat.shape());
   println!("{}", num_points * 2 - mat.rank(1e-16));
+  let rank = mat.rank(1e-16);
 
   let mat = mat;
-  let s =
-    OMatrix::<f64, Dyn, Dyn>::zeros(mat.nrows().min(mat.ncols()), mat.nrows().min(mat.ncols()));
-  let u = OMatrix::<f64, Dyn, Dyn>::zeros(mat.nrows(), mat.nrows());
-  let v = OMatrix::<f64, Dyn, Dyn>::zeros(mat.ncols(), mat.ncols());
+
+  let (u, s, v) = get_svd_decomp(mat.clone());
+
+  let v = v;
+  println!(
+    "{}",
+    v
+      .view((0, rank), (num_points * 2, num_points * 2 - rank))
+  );
+
+  let v = v;
+  let nullspace = v.view((0, rank), (num_points * 2, num_points * 2 - rank));
+
+  let result = mat * nullspace;
+
+  println!("{:3.6}", v);
+
+  visualisation::visualise("test.png", 300, 300, &points, &beams);
+
+  let mut points_defo = points.clone();
+
+  for i in 0..num_points {
+    points_defo[(0, i)] = points[(0, i)] + 3.*&nullspace.column(0)[(2 * i)];
+    points_defo[(1, i)] = points[(1, i)] + 3.*&nullspace.column(0)[(2 * i + 1)];
+  }
+
+  visualisation::visualise("test1.png", 300, 300, &points_defo, &beams);
 
   // rigid body physics!
 
