@@ -1,12 +1,12 @@
 use faer_svd::compute_svd;
-use nalgebra::{Dyn, OMatrix};
+use nalgebra::DMatrix;
 
 use dyn_stack::{DynStack, GlobalMemBuffer, ReborrowMut};
 use faer_core::{Mat, Parallelism};
 
-type GenMatrix = OMatrix<f64, Dyn, Dyn>;
+type GenMatrix = DMatrix<f64>;
 
-pub fn get_svd_decomp(mat: GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
+pub fn get_svd_decomp(mat: &GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
   let n = mat.nrows();
   let m = mat.ncols();
 
@@ -24,9 +24,9 @@ pub fn get_svd_decomp(mat: GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
 
   let mut mem = GlobalMemBuffer::new(
     faer_svd::compute_svd_req::<f64>(
-      n,
-      m,
-      faer_svd::ComputeVectors::Full,
+      n.max(n),
+      m.max(m),
+      faer_svd::ComputeVectors::No,
       faer_svd::ComputeVectors::Full,
       Parallelism::None,
       faer_svd::SvdParams::default(),
@@ -38,10 +38,10 @@ pub fn get_svd_decomp(mat: GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
   compute_svd(
     c.as_ref(),
     s.as_mut().diagonal(),
-    Some(u.as_mut()),
+    None,
     Some(v.as_mut()),
-    1e-16,
-    1e-16,
+    1e-10,
+    1e-10,
     Parallelism::None,
     stack.rb_mut(),
     faer_svd::SvdParams::default(),
@@ -66,4 +66,43 @@ pub fn get_svd_decomp(mat: GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
     }
   }
   return (u_res, s_res, v_res);
+}
+
+pub fn get_nullspace(mat: &GenMatrix) -> (GenMatrix) {
+
+  let btb = mat.transpose() * mat;
+
+  println!("{:1.2}", btb);
+  let eigen = (btb.clone()).symmetric_eigen();
+
+  //println!("{:1.2}", eigen.eigenvalues);
+  //println!("{:1.2}", eigen.eigenvectors);
+
+  let eigenvectors = &eigen.eigenvectors;
+  let eigenvalues = &eigen.eigenvalues;
+
+  let mut count = 0;
+  let mut eigenval_vec: Vec<(f64, usize)> = eigenvalues
+    .iter()
+    .map(|f| {
+      count += 1;
+      (*f, count - 1)
+    })
+    .collect();
+
+  eigenval_vec.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+  eigenval_vec.reverse();
+
+  let eigenval_vec = eigenval_vec;
+  //println!("{:?}", eigenval_vec);
+
+  let mut sorted_eigenvectors = GenMatrix::zeros(btb.nrows(), btb.nrows());
+
+  for i in 0..btb.nrows() {
+    sorted_eigenvectors.set_column(i, &eigenvectors.column(eigenval_vec[i].1))
+  }
+
+  //println!("{:1.2}", sorted_eigenvectors);
+
+  return sorted_eigenvectors;
 }

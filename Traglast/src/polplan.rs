@@ -1,9 +1,8 @@
-use std::fmt::{Display, Formatter, self};
+use std::fmt::{self, Display, Formatter};
 
-use nalgebra::{OMatrix, Dyn, SVector, U2};
+use nalgebra::{Dyn, OMatrix, SVector, U2};
 
 use crate::ZERO_THRESHHOLD;
-
 
 type IncidenceMatrix = OMatrix<usize, Dyn, Dyn>;
 type PolplanMatrix = OMatrix<Pol, Dyn, Dyn>;
@@ -130,7 +129,6 @@ impl Display for Pol {
     };
   }
 }
-
 
 fn beams_to_rigid_bodies(beams: &Beam2DMatrix) -> Vec<RigidBody> {
   let mut res = Vec::new();
