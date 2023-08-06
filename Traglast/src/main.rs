@@ -358,21 +358,15 @@ fn polplan(rigid_bodies: &Vec<RigidBody>, erdscheibe: &Vec<usize>, points: &Poin
 
 fn get_testtragwerk() -> Fachwerk2D {
   let points = vec![
-    Point2D::new(0, 10.*0., 10.*0.),
-    Point2D::new(1, 10.*2., 10.*0.),
-    Point2D::new(2, 10.*3., 10.*0.),
-    Point2D::new(3, 10.*2., 10.*-1.),
-    Point2D::new(4, 10.*2., 10.*-2.),
+    Point2D::new(0, 10. * 0., 10. * 0.),
+    Point2D::new(1, 10. * 2., 10. * 0.),
+    Point2D::new(2, 10. * 3., 10. * 0.)
   ];
   let beams = vec![
-    Beam2D::new(0, 1, 10.), 
-    Beam2D::new(1, 2, 10.),
-    Beam2D::new(2, 3, 10.),
-    Beam2D::new(2, 4, 10.),
-    Beam2D::new(0, 3, 10.),
-    Beam2D::new(0, 4, 10.),
-    Beam2D::new(3, 4, 10.)];
-  let erd = vec![];
+    Beam2D::new(0, 1, 10.),
+    Beam2D::new(1, 2, 10.)
+  ];
+  let erd = vec![0,2];
 
   return Fachwerk2D::new(points, beams, erd);
 }
@@ -381,8 +375,8 @@ fn main() {
   let trag = get_testtragwerk();
   let (points, beams, erdscheibe) = trag.matrix_form();
 
-  let erdscheiben_connections = binomial(erdscheibe.len(), 2);
-  let mut mat = RigidMatrix::zeros(beams.ncols() + erdscheiben_connections, points.ncols() * 2);
+  //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
+  let mut mat = RigidMatrix::zeros(beams.ncols(), points.ncols() * 2);
 
   let num_beams = beams.ncols();
   let num_points = points.ncols();
@@ -392,33 +386,23 @@ fn main() {
 
     let x_diff = points[(0, from_point)] - points[(0, to_point)];
     let y_diff = points[(1, from_point)] - points[(1, to_point)];
-
-    mat[(i, 2 * from_point)] = x_diff;
-    mat[(i, 2 * from_point + 1)] = y_diff;
-    mat[(i, 2 * to_point)] = -x_diff;
-    mat[(i, 2 * to_point + 1)] = -y_diff;
-  }
-
-  
-  let mut start = num_beams;
-  for i in erdscheibe.iter().combinations(2) {
-    let from_point = *i[0];
-    let to_point = *i[1];
-
-    let x_diff = points[(0, from_point)] - points[(0, to_point)];
-    let y_diff = points[(1, from_point)] - points[(1, to_point)];
-
-    mat[(start, 2 * from_point)] = x_diff;
-    mat[(start, 2 * from_point + 1)] = y_diff;
-    mat[(start, 2 * to_point)] = -x_diff;
-    mat[(start, 2 * to_point + 1)] = -y_diff;
-    start += 1;
+    let length = (x_diff*x_diff + y_diff * y_diff).sqrt();
+    println!("{}",length);
+    if !erdscheibe.contains(&from_point) {
+      mat[(i, 2 * from_point)] = x_diff/length;
+      mat[(i, 2 * from_point + 1)] = y_diff/length;
+    }
+    if !erdscheibe.contains(&to_point) { 
+      mat[(i, 2 * to_point)] = -x_diff/length;
+      mat[(i, 2 * to_point + 1)] = -y_diff/length;
+    }
   }
 
   println!("{}", mat);
   println!("{:?}", mat.shape());
-  println!("{}", num_points * 2 - mat.rank(1e-16));
+  //println!("{}", num_points * 2 - mat.rank(1e-16));
   let rank = mat.rank(1e-16);
+  println!("{}", num_points * 2 - rank);
 
   let mat = mat;
 
@@ -427,8 +411,7 @@ fn main() {
   let v = v;
   println!(
     "{}",
-    v
-      .view((0, rank), (num_points * 2, num_points * 2 - rank))
+    v.view((0, rank), (num_points * 2, num_points * 2 - rank))
   );
 
   let v = v;
@@ -443,8 +426,8 @@ fn main() {
   let mut points_defo = points.clone();
 
   for i in 0..num_points {
-    points_defo[(0, i)] = points[(0, i)] + 3.*&nullspace.column(0)[(2 * i)];
-    points_defo[(1, i)] = points[(1, i)] + 3.*&nullspace.column(0)[(2 * i + 1)];
+    points_defo[(0, i)] = points[(0, i)] + 3. * &nullspace.column(0)[(2 * i)];
+    points_defo[(1, i)] = points[(1, i)] + 3. * &nullspace.column(0)[(2 * i + 1)];
   }
 
   visualisation::visualise("test1.png", 300, 300, &points_defo, &beams);
