@@ -3,7 +3,6 @@ mod visualisation;
 mod polplan;
 mod svd_helper;
 
-use faer_svd::compute_svd;
 use nalgebra::{DMatrix, Dyn, OMatrix, SVector, U2, U3};
 
 pub const ZERO_THRESHHOLD: f64 = 1e-10;
@@ -186,6 +185,21 @@ impl Fachwerk2D {
   }
 }
 
+fn remove_beams(beams: &mut Vec<Beam2D>, indeces: &Vec<usize>) -> Vec<Beam2D> {
+  let mut res = Vec::new();
+  let beams_total = beams.len();
+  let mut remove_total = 0;
+  for i in 0..beams_total {
+      if indeces.contains(&i) {
+          let i = i - remove_total;
+          let b = beams.remove(i);
+          remove_total += 1;
+          res.push(b);
+      }
+  }
+  return res;
+}
+
 fn get_tragwerk() -> Fachwerk2D {
   let mut v = Vec::new();
 
@@ -273,7 +287,7 @@ fn get_testtragwerk2() -> Fachwerk2D {
     ),
     Point2D::new_unconstrained(2, 0., 1.),
     Point2D::new_unconstrained(3, 1., 1.),
-    Point2D::new(4, 1., 0., vec![CONSTRAINS::YRestrain]),
+    Point2D::new(4, 1., 0., vec![]),
   ];
   let beams = vec![
     Beam2D::new(1, 2, 10., 1.0),
