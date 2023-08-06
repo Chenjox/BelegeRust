@@ -18,5 +18,6 @@ members = [
     "elast_gebettet",
     "uncertainty",
     "stat_entwerfen",
+    "antwortspektrum",
     "misc"
 ]
