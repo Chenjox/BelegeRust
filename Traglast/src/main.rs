@@ -3,6 +3,7 @@ mod visualisation;
 mod polplan;
 mod svd_helper;
 
+use itertools::Itertools;
 use nalgebra::{DMatrix, Dyn, OMatrix, SVector, U2, U3};
 
 pub const ZERO_THRESHHOLD: f64 = 1e-10;
@@ -14,7 +15,7 @@ type DofMatrix = OMatrix<i32, U3, Dyn>;
 
 type RigidMatrix = OMatrix<f64, Dyn, Dyn>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CONSTRAINS {
   XRestrain,
   YRestrain,
@@ -31,7 +32,7 @@ impl CONSTRAINS {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Point2D {
   num: usize,
   coordinates: S2Vec,
@@ -82,7 +83,7 @@ impl Point2D {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Beam2D {
   from: usize,
   to: usize,
@@ -185,19 +186,20 @@ impl Fachwerk2D {
   }
 }
 
-fn remove_beams(beams: &mut Vec<Beam2D>, indeces: &Vec<usize>) -> Vec<Beam2D> {
+fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> Vec<Beam2D> {
   let mut res = Vec::new();
+  let mut beams = beams.clone();
   let beams_total = beams.len();
   let mut remove_total = 0;
   for i in 0..beams_total {
-      if indeces.contains(&i) {
-          let i = i - remove_total;
-          let b = beams.remove(i);
-          remove_total += 1;
-          res.push(b);
-      }
+    if indeces.contains(&i) {
+      let i = i - remove_total;
+      let b = beams.remove(i);
+      remove_total += 1;
+      res.push(b);
+    }
   }
-  return res;
+  return beams;
 }
 
 fn get_tragwerk() -> Fachwerk2D {
@@ -285,27 +287,28 @@ fn get_testtragwerk2() -> Fachwerk2D {
       0.,
       vec![CONSTRAINS::XRestrain, CONSTRAINS::YRestrain],
     ),
-    Point2D::new_unconstrained(2, 0., 1.),
-    Point2D::new_unconstrained(3, 1., 1.),
-    Point2D::new(4, 1., 0., vec![]),
+    Point2D::new(2, 2., 0., vec![CONSTRAINS::YRestrain]),
+    Point2D::new_unconstrained(3, 1., 2.),
+    Point2D::new_unconstrained(4, 1., 0.),
+    Point2D::new_unconstrained(5, 0.5, 1.),
+    Point2D::new_unconstrained(6, 1.5, 1.),
   ];
   let beams = vec![
-    Beam2D::new(1, 2, 10., 1.0),
-    Beam2D::new(2, 3, 10., 1.0),
-    Beam2D::new(3, 4, 10., 1.0),
     Beam2D::new(1, 4, 10., 1.0),
-    Beam2D::new(1, 3, 10., 1.0),
+    Beam2D::new(1, 5, 10., 1.0),
     Beam2D::new(2, 4, 10., 1.0),
+    Beam2D::new(2, 6, 10., 1.0),
+    Beam2D::new(3, 4, 10., 1.0),
+    Beam2D::new(3, 5, 10., 1.0),
+    Beam2D::new(3, 6, 10., 1.0),
+    Beam2D::new(4, 5, 10., 1.0),
+    //Beam2D::new(4, 6, 10., 1.0)
   ];
 
   return Fachwerk2D::new(points, beams);
 }
 
-fn main() {
-  let trag = get_testtragwerk2();
-  let (points, beams, dofmatrix, dof_num) = trag.matrix_form();
-
-  //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
+fn get_rigidity_matrix(points: &Point2DMatrix, beams: &Beam2DMatrix) -> RigidMatrix {
   let mut mat = RigidMatrix::zeros(beams.ncols(), points.ncols() * 2);
 
   let num_beams = beams.ncols();
@@ -325,53 +328,91 @@ fn main() {
     mat[(i, 2 * to_point)] = -x_diff / length;
     mat[(i, 2 * to_point + 1)] = -y_diff / length;
   }
-  println!("{}", dofmatrix);
+  return mat;
+}
 
-  println!("{:3.5}", mat);
-
-  let mut bool_mat = RigidMatrix::zeros(points.ncols() * 2, dof_num as usize);
+fn get_boolean_matrix(dofs: &DofMatrix, dof_num: usize, num_points: usize) -> RigidMatrix {
+  let mut bool_mat = RigidMatrix::zeros(num_points * 2, dof_num);
   let mut counter = 0;
   for i in 0..num_points {
-    if dofmatrix[(0, i)] != -1 {
+    if dofs[(0, i)] != -1 {
       bool_mat[(2 * i, counter)] = 1.;
       counter += 1;
     }
-    if dofmatrix[(1, i)] != -1 {
+    if dofs[(1, i)] != -1 {
       bool_mat[(2 * i + 1, counter)] = 1.;
       counter += 1;
     }
   }
-  println!("{}", bool_mat);
-  // Matrix aller Freiheitsgrade
-  let mat = mat * &bool_mat;
-  let rank = mat.rank(ZERO_THRESHHOLD);
+  return bool_mat;
+}
+fn main() {
+  let trag = get_tragwerk();
+  let beams = trag.beams;
+  let points = trag.points;
 
-  println!("{:?}", mat.shape());
+  println!("{}", beams.len());
 
-  visualisation::visualise("test.png", 300, 300, &points, &beams);
+  let mut count = [0; 10];
+  for i in (0..32).combinations(3) {
+    let beams = remove_beams(&beams, &i);
+    let points = points.clone();
+    let trag = Fachwerk2D {
+      beams,
+      points: points,
+    };
+    let (points, beams, dofmatrix, dof_num) = trag.matrix_form();
+
+    let num_points = points.ncols();
+    //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
+
+    let mat = get_rigidity_matrix(&points, &beams);
+
+    let bool_mat = get_boolean_matrix(&dofmatrix, dof_num as usize, num_points);
+
+    let mat = mat * &bool_mat;
+    let rank = mat.rank(ZERO_THRESHHOLD);
+
+    if let Some(X) = svd_helper::get_nullspace(&mat) {
+      let nullspace = X.view((0, rank), (dof_num as usize, dof_num as usize - rank));
+      let deformations = nullspace.transpose() * bool_mat.transpose();
+
+      //println!("{}",rank);
+      count[nullspace.ncols()] += 1;
+
+      if nullspace.ncols() == 1 {
+        let path = format!("Z-Resultfiles\\test{}.png",count[nullspace.ncols()]);
+        visualisation::visualise(&path, 400, 300, &points, &beams);
+
+        let mut points_defo = points.clone();
+
+        for i in 0..num_points {
+          points_defo[(0, i)] = points[(0, i)] - 0.7 * &deformations.row(0)[(2 * i)];
+          points_defo[(1, i)] = points[(1, i)] - 0.7 * &deformations.row(0)[(2 * i + 1)];
+        }
+        let path = format!("Z-Resultfiles\\test{}v.png",count[nullspace.ncols()]);
+        visualisation::visualise(&path, 400, 300, &points_defo, &beams);
+      }
+    }
+  }
+
+  println!("{:?}", count);
+
+  //
 
   //let (_Y, _N, X) = svd_helper::get_svd_decomp(&mat);
 
-  let X = svd_helper::get_nullspace(&mat);
-  println!(
-    "{:3.5}",
-    X.view((0, rank), (dof_num as usize, dof_num as usize - rank))
-  );
+  //println!("{:3.5}", other);
 
-  let nullspace = X.view((0, rank), (dof_num as usize, dof_num as usize - rank));
-  let other = nullspace.transpose() * bool_mat.transpose();
+  //let mut points_defo = points.clone();
 
-  println!("{:3.5}", other);
+  //for i in 0..num_points {
+  //  points_defo[(0, i)] = points[(0, i)] - 0.3 * &other.row(0)[(2 * i)];
+  //  points_defo[(1, i)] = points[(1, i)] - 0.3 * &other.row(0)[(2 * i + 1)];
+  //}
+  //println!("{:3.5}", points_defo);
 
-  let mut points_defo = points.clone();
-
-  for i in 0..num_points {
-    points_defo[(0, i)] = points[(0, i)] + 1. * &other.row(0)[(2 * i)];
-    points_defo[(1, i)] = points[(1, i)] + 1. * &other.row(0)[(2 * i + 1)];
-  }
-  println!("{:3.5}", points_defo);
-
-  visualisation::visualise("test1.png", 300, 300, &points_defo, &beams);
+  //visualisation::visualise("test1.png", 300, 300, &points_defo, &beams);
 
   // rigid body physics!
 

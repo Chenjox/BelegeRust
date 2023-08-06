@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use faer_svd::compute_svd;
 use nalgebra::DMatrix;
 
@@ -68,11 +70,10 @@ pub fn get_svd_decomp(mat: &GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
   return (u_res, s_res, v_res);
 }
 
-pub fn get_nullspace(mat: &GenMatrix) -> (GenMatrix) {
-
+pub fn get_nullspace(mat: &GenMatrix) -> Option<GenMatrix> {
   let btb = mat.transpose() * mat;
 
-  println!("{:1.2}", btb);
+  //println!("{:1.2}", btb);
   let eigen = (btb.clone()).symmetric_eigen();
 
   //println!("{:1.2}", eigen.eigenvalues);
@@ -90,8 +91,18 @@ pub fn get_nullspace(mat: &GenMatrix) -> (GenMatrix) {
     })
     .collect();
 
-  eigenval_vec.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+  let mut has_errored = false;
+  eigenval_vec.sort_by(|a, b| {
+    a.0.partial_cmp(&b.0).unwrap_or_else(|| {
+      has_errored = true;
+      Ordering::Equal
+    })
+  });
   eigenval_vec.reverse();
+  if has_errored {
+    println!("{:?}", eigenval_vec);
+    return None;
+  }
 
   let eigenval_vec = eigenval_vec;
   //println!("{:?}", eigenval_vec);
@@ -104,5 +115,5 @@ pub fn get_nullspace(mat: &GenMatrix) -> (GenMatrix) {
 
   //println!("{:1.2}", sorted_eigenvectors);
 
-  return sorted_eigenvectors;
+  return Some(sorted_eigenvectors);
 }
