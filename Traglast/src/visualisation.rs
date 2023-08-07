@@ -117,8 +117,8 @@ pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, bea
   //    }
   //}
   //
-  let max = max_x.max(max_y);
-  let min = min_x.min(min_y);
+  let max = max_x.max(max_y) + 5.;
+  let min = min_x.min(min_y) - 5.;
   let margin = 40;
   let root = BitMapBackend::new(path, (res_x, res_y))
     .into_drawing_area()

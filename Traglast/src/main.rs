@@ -4,13 +4,15 @@ mod polplan;
 mod svd_helper;
 
 use itertools::Itertools;
-use nalgebra::{DMatrix, Dyn, OMatrix, SVector, U2, U3};
+use nalgebra::{DMatrix, Dyn, OMatrix, SVector, U2, U3, U1};
 
 pub const ZERO_THRESHHOLD: f64 = 1e-10;
 type S2Vec = SVector<f64, 2>;
 type S3Vec = SVector<f64, 3>;
 type Point2DMatrix = OMatrix<f64, U2, Dyn>;
 type Beam2DMatrix = OMatrix<usize, U2, Dyn>;
+type Load2DMatrix = OMatrix<f64, U2, Dyn>;
+type Load2DFlattenMatrix = OMatrix<f64, U1, Dyn>;
 type DofMatrix = OMatrix<i32, U3, Dyn>;
 
 type RigidMatrix = OMatrix<f64, Dyn, Dyn>;
@@ -38,6 +40,7 @@ pub struct Point2D {
   coordinates: S2Vec,
   constraints: Vec<CONSTRAINS>,
 }
+
 
 impl Point2D {
   pub fn new(number: usize, x: f64, y: f64, constraints: Vec<CONSTRAINS>) -> Self {
@@ -141,7 +144,7 @@ impl Fachwerk2D {
     return Fachwerk2D { points, beams };
   }
 
-  pub fn matrix_form(&self) -> (Point2DMatrix, Beam2DMatrix, DofMatrix, i32) {
+  pub fn matrix_form(&self) -> (Point2DMatrix, Beam2DMatrix, DofMatrix, i32, Indexmap) {
     let map: Vec<usize> = self.points.iter().map(|f| f.num).collect();
     let mut p_matrix = Point2DMatrix::zeros(self.points.len());
     let mut b_matrix = Beam2DMatrix::zeros(self.beams.len());
@@ -181,12 +184,13 @@ impl Fachwerk2D {
       b_matrix[(0, b)] = new_from;
       b_matrix[(1, b)] = new_to;
     }
+    let indexmap = Indexmap::new_from_orig_to_comp(map);
     //println!("{:?},{},{}",map, p_matrix, b_matrix);
-    return (p_matrix, b_matrix, dof_matrix, dof_num);
+    return (p_matrix, b_matrix, dof_matrix, dof_num, indexmap);
   }
 }
 
-fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> Vec<Beam2D> {
+fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> (Vec<Beam2D>,Vec<Beam2D>) {
   let mut res = Vec::new();
   let mut beams = beams.clone();
   let beams_total = beams.len();
@@ -199,7 +203,43 @@ fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> Vec<Beam2D> {
       res.push(b);
     }
   }
-  return beams;
+  return (beams,res);
+}
+
+pub struct Indexmap {
+  orig_to_computed: Vec<usize>
+}
+
+impl Indexmap {
+    fn new_from_orig_to_comp(map: Vec<usize>)-> Self{
+      return Self {
+        orig_to_computed: map
+      };
+    }
+
+    fn map_orig_to_comp(&self,num: usize) -> usize {
+      let mut comp_index = 0;
+      for i in 0..self.orig_to_computed.len() {
+        if num == self.orig_to_computed[i] {
+          comp_index = i;
+        }
+      }
+      return comp_index;
+    }
+}
+
+pub struct Load2D {
+  node: usize,
+  loads: S2Vec
+}
+
+impl Load2D {
+  fn new_from_components(node: usize, x_load: f64, y_load: f64) -> Self {
+    return Self {
+      node,
+      loads: S2Vec::new(x_load, y_load)
+    };
+  }
 }
 
 fn get_tragwerk() -> Fachwerk2D {
@@ -251,6 +291,68 @@ fn get_tragwerk() -> Fachwerk2D {
   kant.push(Beam2D::new(14, 17, 1.0, 1.0));
 
   return Fachwerk2D::new(v, kant);
+}
+
+fn get_loading() -> Vec<Load2D> {
+  return vec![
+    Load2D::new_from_components(1, 3.0, 0.),
+    Load2D::new_from_components(4, 0., -2.0),
+    Load2D::new_from_components(5, 0., -1.0)
+  ];
+}
+
+fn get_loading_matrix_form(loads: Vec<Load2D>, map: &Indexmap) -> (Vec<usize>,Load2DMatrix) {
+  let nloads = loads.len();
+  let mut result = Load2DMatrix::zeros(nloads);
+  let mut map_vec = vec![0; nloads];
+
+  for (index,load) in loads.iter().enumerate() {
+    let comp_index = map.map_orig_to_comp(load.node);
+    result[(0,index)] += load.loads[0];
+    result[(1,index)] += load.loads[1];
+
+    map_vec[index] = comp_index;
+  }
+
+  return (map_vec,result)
+}
+
+fn get_loading_flatten_form(map_vec: &Vec<usize>, load_matrix: &Load2DMatrix, num_points: usize) -> Load2DFlattenMatrix {
+  let mut mat = Load2DFlattenMatrix::zeros(num_points * 2);
+
+  for (index, point_index) in map_vec.iter().enumerate() {
+    mat[(2*point_index)] = load_matrix[(0,index)];
+    mat[(2*point_index+1)] = load_matrix[(1,index)];
+  }
+  return mat;
+}
+
+fn get_inner_loading_matrix(removed_beams: &Vec<Beam2D>, indexmap: &Indexmap, points: &Point2DMatrix) -> Load2DFlattenMatrix {
+  // zuerst alle Beams in jeweils 2 Lasten umrechnen:
+  let mut res = Vec::<Load2D>::new();
+  for beam in removed_beams {
+    let from_index = indexmap.map_orig_to_comp(beam.from);
+    let to_index = indexmap.map_orig_to_comp(beam.to);
+
+    let from_coords = points.column(from_index);
+    let to_coords = points.column(to_index);
+
+    let diff = to_coords - from_coords;
+    let angle = diff.y.atan2(diff.x);
+
+    let cos = angle.cos();
+    let sin = angle.sin();
+
+    let load_from = Load2D::new_from_components(beam.from, cos*beam.nplast, sin*beam.nplast);
+    let load_to = Load2D::new_from_components(beam.to, cos*beam.nplast, sin*beam.nplast);
+    res.push(load_from);
+    res.push(load_to);
+  }
+
+  let (inde, mat) =  get_loading_matrix_form(res, indexmap);
+  let flatten_mat = get_loading_flatten_form(&inde, &mat, points.ncols());
+
+  return flatten_mat;
 }
 
 fn get_testtragwerk() -> Fachwerk2D {
@@ -351,18 +453,17 @@ fn main() {
   let beams = trag.beams;
   let points = trag.points;
 
-  println!("{}", beams.len());
-
   let mut count = [0; 10];
-  for i in (0..32).combinations(3) {
-    let beams = remove_beams(&beams, &i);
+  for i in (0..32).combinations(1) {
+    let (beams,removed_beams) = remove_beams(&beams, &i);
     let points = points.clone();
     let trag = Fachwerk2D {
       beams,
       points: points,
     };
-    let (points, beams, dofmatrix, dof_num) = trag.matrix_form();
 
+    let (points, beams, dofmatrix, dof_num, indexmap) = trag.matrix_form();
+    
     let num_points = points.ncols();
     //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
 
@@ -373,22 +474,33 @@ fn main() {
     let mat = mat * &bool_mat;
     let rank = mat.rank(ZERO_THRESHHOLD);
 
-    if let Some(X) = svd_helper::get_nullspace(&mat) {
-      let nullspace = X.view((0, rank), (dof_num as usize, dof_num as usize - rank));
+    if let Some(YX) = svd_helper::get_nullspace(&mat) {
+      let x = YX.1; // Mechanism
+      let nullspace = x.view((0, rank), (dof_num as usize, dof_num as usize - rank));
       let deformations = nullspace.transpose() * bool_mat.transpose();
 
-      //println!("{}",rank);
       count[nullspace.ncols()] += 1;
 
       if nullspace.ncols() == 1 {
+        let loads = get_loading();
+        let (map_vec,matrix_loads) = get_loading_matrix_form(loads, &indexmap);
+        let flatten_matrix_loads = get_loading_flatten_form(&map_vec, &matrix_loads, num_points);
+
+        let inner_loads = get_inner_loading_matrix(&removed_beams, &indexmap, &points);
+        println!("{:2.2}",inner_loads.transpose());
+
+        let norm_deformations = 1./(deformations.iter().map(|f| f.abs()).max_by(|a,b| a.partial_cmp(&b).unwrap())).unwrap() * &deformations;
+
+        println!("Outer Work: {:2.2}",(flatten_matrix_loads*deformations.transpose())[0]);
         let path = format!("Z-Resultfiles\\test{}.png",count[nullspace.ncols()]);
+
         visualisation::visualise(&path, 400, 300, &points, &beams);
 
         let mut points_defo = points.clone();
 
         for i in 0..num_points {
-          points_defo[(0, i)] = points[(0, i)] - 0.7 * &deformations.row(0)[(2 * i)];
-          points_defo[(1, i)] = points[(1, i)] - 0.7 * &deformations.row(0)[(2 * i + 1)];
+          points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
+          points_defo[(1, i)] = points[(1, i)] - 0.7 * &norm_deformations.row(0)[(2 * i + 1)];
         }
         let path = format!("Z-Resultfiles\\test{}v.png",count[nullspace.ncols()]);
         visualisation::visualise(&path, 400, 300, &points_defo, &beams);
