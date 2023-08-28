@@ -72,7 +72,7 @@ pub fn get_svd_decomp(mat: &GenMatrix) -> (GenMatrix, GenMatrix, GenMatrix) {
 
 fn get_eigenmatrix(mat: &GenMatrix) -> Option<GenMatrix> {
   if !mat.is_square() {
-    panic!("Matrix is not square! {:?}",mat.shape())
+    panic!("Matrix is not square! {:?}", mat.shape())
   }
   let eigen = (mat.clone()).symmetric_eigen();
 
@@ -117,7 +117,7 @@ fn get_eigenmatrix(mat: &GenMatrix) -> Option<GenMatrix> {
   return Some(sorted_eigenvectors);
 }
 
-pub fn get_nullspace(mat: &GenMatrix) -> Option<(GenMatrix,GenMatrix)> {
+pub fn get_nullspace(mat: &GenMatrix) -> Option<(GenMatrix, GenMatrix)> {
   let btb = mat.transpose() * mat;
   let bbt = mat * mat.transpose();
 
@@ -125,7 +125,7 @@ pub fn get_nullspace(mat: &GenMatrix) -> Option<(GenMatrix,GenMatrix)> {
   let Y = get_eigenmatrix(&bbt);
   //println!("{:1.2}", sorted_eigenvectors);
 
-  let result =Y.zip(X);
+  let result = Y.zip(X);
 
   return result;
 }

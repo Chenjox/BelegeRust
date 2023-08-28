@@ -3,8 +3,9 @@ mod visualisation;
 mod polplan;
 mod svd_helper;
 
+use faer_core::ComplexField;
 use itertools::Itertools;
-use nalgebra::{DMatrix, Dyn, OMatrix, SVector, U2, U3, U1};
+use nalgebra::{DMatrix, Dyn, OMatrix, SVector, U1, U2, U3};
 
 pub const ZERO_THRESHHOLD: f64 = 1e-10;
 type S2Vec = SVector<f64, 2>;
@@ -40,7 +41,6 @@ pub struct Point2D {
   coordinates: S2Vec,
   constraints: Vec<CONSTRAINS>,
 }
-
 
 impl Point2D {
   pub fn new(number: usize, x: f64, y: f64, constraints: Vec<CONSTRAINS>) -> Self {
@@ -190,7 +190,7 @@ impl Fachwerk2D {
   }
 }
 
-fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> (Vec<Beam2D>,Vec<Beam2D>) {
+fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> (Vec<Beam2D>, Vec<Beam2D>) {
   let mut res = Vec::new();
   let mut beams = beams.clone();
   let beams_total = beams.len();
@@ -203,41 +203,41 @@ fn remove_beams(beams: &Vec<Beam2D>, indeces: &Vec<usize>) -> (Vec<Beam2D>,Vec<B
       res.push(b);
     }
   }
-  return (beams,res);
+  return (beams, res);
 }
 
 pub struct Indexmap {
-  orig_to_computed: Vec<usize>
+  orig_to_computed: Vec<usize>,
 }
 
 impl Indexmap {
-    fn new_from_orig_to_comp(map: Vec<usize>)-> Self{
-      return Self {
-        orig_to_computed: map
-      };
-    }
+  fn new_from_orig_to_comp(map: Vec<usize>) -> Self {
+    return Self {
+      orig_to_computed: map,
+    };
+  }
 
-    fn map_orig_to_comp(&self,num: usize) -> usize {
-      let mut comp_index = 0;
-      for i in 0..self.orig_to_computed.len() {
-        if num == self.orig_to_computed[i] {
-          comp_index = i;
-        }
+  fn map_orig_to_comp(&self, num: usize) -> usize {
+    let mut comp_index = 0;
+    for i in 0..self.orig_to_computed.len() {
+      if num == self.orig_to_computed[i] {
+        comp_index = i;
       }
-      return comp_index;
     }
+    return comp_index;
+  }
 }
 
 pub struct Load2D {
   node: usize,
-  loads: S2Vec
+  loads: S2Vec,
 }
 
 impl Load2D {
   fn new_from_components(node: usize, x_load: f64, y_load: f64) -> Self {
     return Self {
       node,
-      loads: S2Vec::new(x_load, y_load)
+      loads: S2Vec::new(x_load, y_load),
     };
   }
 }
@@ -297,59 +297,94 @@ fn get_loading() -> Vec<Load2D> {
   return vec![
     Load2D::new_from_components(1, 3.0, 0.),
     Load2D::new_from_components(4, 0., -2.0),
-    Load2D::new_from_components(5, 0., -1.0)
+    Load2D::new_from_components(5, 0., -1.0),
   ];
 }
 
-fn get_loading_matrix_form(loads: Vec<Load2D>, map: &Indexmap) -> (Vec<usize>,Load2DMatrix) {
+/// Returns a Matrix of every Loads x and y component, similar to the point matrix.
+/// also returns a Vector indicating the node of the load
+fn get_loading_matrix_form(loads: Vec<Load2D>, map: &Indexmap) -> (Vec<usize>, Load2DMatrix) {
   let nloads = loads.len();
   let mut result = Load2DMatrix::zeros(nloads);
   let mut map_vec = vec![0; nloads];
 
-  for (index,load) in loads.iter().enumerate() {
+  for (index, load) in loads.iter().enumerate() {
     let comp_index = map.map_orig_to_comp(load.node);
-    result[(0,index)] += load.loads[0];
-    result[(1,index)] += load.loads[1];
+    result[(0, index)] += load.loads[0];
+    result[(1, index)] += load.loads[1];
 
     map_vec[index] = comp_index;
   }
 
-  return (map_vec,result)
+  return (map_vec, result);
 }
 
-fn get_loading_flatten_form(map_vec: &Vec<usize>, load_matrix: &Load2DMatrix, num_points: usize) -> Load2DFlattenMatrix {
+/// Flattens a 2xN matrix into a 2Nx1 Matrix more suitable for multiplication.
+fn get_loading_flatten_form(
+  map_vec: &Vec<usize>,
+  load_matrix: &Load2DMatrix,
+  num_points: usize,
+) -> Load2DFlattenMatrix {
   let mut mat = Load2DFlattenMatrix::zeros(num_points * 2);
 
   for (index, point_index) in map_vec.iter().enumerate() {
-    mat[(2*point_index)] = load_matrix[(0,index)];
-    mat[(2*point_index+1)] = load_matrix[(1,index)];
+    mat[(2 * point_index)] = load_matrix[(0, index)];
+    mat[(2 * point_index + 1)] = load_matrix[(1, index)];
   }
   return mat;
 }
 
-fn get_inner_loading_matrix(removed_beams: &Vec<Beam2D>, indexmap: &Indexmap, points: &Point2DMatrix) -> Load2DFlattenMatrix {
+fn get_inner_loading_matrix(
+  removed_beams: &Vec<Beam2D>,
+  indexmap: &Indexmap,
+  points: &Point2DMatrix,
+  defo_points: &Point2DMatrix,
+) -> Load2DFlattenMatrix {
   // zuerst alle Beams in jeweils 2 Lasten umrechnen:
   let mut res = Vec::<Load2D>::new();
   for beam in removed_beams {
     let from_index = indexmap.map_orig_to_comp(beam.from);
     let to_index = indexmap.map_orig_to_comp(beam.to);
-
+    // Coordinaten der Punkte
     let from_coords = points.column(from_index);
     let to_coords = points.column(to_index);
 
     let diff = to_coords - from_coords;
+    let length = (diff.component_mul(&diff)).sum().sqrt();
     let angle = diff.y.atan2(diff.x);
 
     let cos = angle.cos();
     let sin = angle.sin();
 
-    let load_from = Load2D::new_from_components(beam.from, cos*beam.nplast, sin*beam.nplast);
-    let load_to = Load2D::new_from_components(beam.to, cos*beam.nplast, sin*beam.nplast);
+    let from_deformation = defo_points.column(from_index);
+    let to_deformation = defo_points.column(to_index);
+    let diff_deformation = to_deformation - from_deformation;
+    let length_change = (diff_deformation.component_mul(&diff_deformation))
+      .sum()
+      .sqrt();
+    let signum = if length_change > ZERO_THRESHHOLD && (length - length_change) >= 0. {
+      1.
+    } else if length_change > ZERO_THRESHHOLD && (length - length_change) <= 0. {
+      -1.
+    } else {
+      0.
+    };
+
+    let load_from = Load2D::new_from_components(
+      beam.from,
+      signum * cos * beam.nplast,
+      signum * sin * beam.nplast,
+    );
+    let load_to = Load2D::new_from_components(
+      beam.to,
+      signum * cos * beam.nplast,
+      signum * sin * beam.nplast,
+    );
     res.push(load_from);
     res.push(load_to);
   }
 
-  let (inde, mat) =  get_loading_matrix_form(res, indexmap);
+  let (inde, mat) = get_loading_matrix_form(res, indexmap);
   let flatten_mat = get_loading_flatten_form(&inde, &mat, points.ncols());
 
   return flatten_mat;
@@ -448,14 +483,15 @@ fn get_boolean_matrix(dofs: &DofMatrix, dof_num: usize, num_points: usize) -> Ri
   }
   return bool_mat;
 }
+
 fn main() {
   let trag = get_tragwerk();
   let beams = trag.beams;
   let points = trag.points;
 
   let mut count = [0; 10];
-  for i in (0..32).combinations(1) {
-    let (beams,removed_beams) = remove_beams(&beams, &i);
+  for i in (0..32).combinations(2) {
+    let (beams, removed_beams) = remove_beams(&beams, &i);
     let points = points.clone();
     let trag = Fachwerk2D {
       beams,
@@ -463,7 +499,7 @@ fn main() {
     };
 
     let (points, beams, dofmatrix, dof_num, indexmap) = trag.matrix_form();
-    
+
     let num_points = points.ncols();
     //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
 
@@ -483,27 +519,63 @@ fn main() {
 
       if nullspace.ncols() == 1 {
         let loads = get_loading();
-        let (map_vec,matrix_loads) = get_loading_matrix_form(loads, &indexmap);
+        let (map_vec, matrix_loads) = get_loading_matrix_form(loads, &indexmap);
         let flatten_matrix_loads = get_loading_flatten_form(&map_vec, &matrix_loads, num_points);
 
-        let inner_loads = get_inner_loading_matrix(&removed_beams, &indexmap, &points);
-        println!("{:2.2}",inner_loads.transpose());
+        let norm_deformations = 1.
+          / (deformations
+            .iter()
+            .map(|f| f.abs())
+            .max_by(|a, b| a.partial_cmp(&b).unwrap()))
+          .unwrap()
+          * &deformations;
 
-        let norm_deformations = 1./(deformations.iter().map(|f| f.abs()).max_by(|a,b| a.partial_cmp(&b).unwrap())).unwrap() * &deformations;
+        
 
-        println!("Outer Work: {:2.2}",(flatten_matrix_loads*deformations.transpose())[0]);
-        let path = format!("Z-Resultfiles\\test{}.png",count[nullspace.ncols()]);
+        let outer_work = flatten_matrix_loads.dot(&norm_deformations);
 
-        visualisation::visualise(&path, 400, 300, &points, &beams);
+        let norm_deformations = if outer_work >= 0. { -1. } else { 1. } * norm_deformations;
 
-        let mut points_defo = points.clone();
+        let point_deformations = {
+          let mut mut_norm_deformations = Point2DMatrix::zeros(num_points * 2);
+          for i in 0..num_points {
+            mut_norm_deformations[(0, i)] = points[(0, i)] + norm_deformations.row(0)[(2 * i)];
+            mut_norm_deformations[(1, i)] = points[(1, i)] + norm_deformations.row(0)[(2 * i + 1)];
+          }
+          mut_norm_deformations
+        };
 
-        for i in 0..num_points {
-          points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
-          points_defo[(1, i)] = points[(1, i)] - 0.7 * &norm_deformations.row(0)[(2 * i + 1)];
+        let inner_loads =
+          get_inner_loading_matrix(&removed_beams, &indexmap, &points, &point_deformations);
+
+        //println!("{:2.2}",inner_loads.transpose());
+
+        //println!("{:2.2}",norm_deformations.transpose());
+
+        let inner_work = inner_loads.dot(&norm_deformations);
+
+        let traglast = if inner_work.abs() > ZERO_THRESHHOLD {
+          -outer_work / inner_work
+        } else {
+          f64::INFINITY
+        };
+        //println!("{:2.2}", traglast);
+
+        if outer_work > ZERO_THRESHHOLD && traglast.is_finite() && traglast > 0.0 {
+          let path = format!("Z-Resultfiles\\test{}-{:2.2}.png", count[nullspace.ncols()],traglast);
+
+          visualisation::visualise(&path, 400, 300, &points, &beams);
+
+          let mut points_defo = points.clone();
+
+          for i in 0..num_points {
+            points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
+            points_defo[(1, i)] = points[(1, i)] - 0.7 * &norm_deformations.row(0)[(2 * i + 1)];
+          }
+
+          let path = format!("Z-Resultfiles\\test{}v-{:2.2}.png", count[nullspace.ncols()],traglast);
+          visualisation::visualise(&path, 400, 300, &points_defo, &beams);
         }
-        let path = format!("Z-Resultfiles\\test{}v.png",count[nullspace.ncols()]);
-        visualisation::visualise(&path, 400, 300, &points_defo, &beams);
       }
     }
   }
