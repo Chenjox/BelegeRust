@@ -97,10 +97,10 @@ static PALETTE: [RGBColor; 10] = [
 
 pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, beams: &Beam2DMatrix) {
   // Ein paar diagnosti
-  let mut max_x: f64 = 0.0;
-  let mut min_x: f64 = 0.0;
-  let mut max_y: f64 = 0.0;
-  let mut min_y: f64 = 0.0;
+  let mut max_x: f64 = f64::MIN;
+  let mut min_x: f64 = f64::MAX;
+  let mut max_y: f64 = f64::MIN;
+  let mut min_y: f64 = f64::MAX;
   let num_points = points.ncols();
   for i in 0..num_points {
     max_x = max_x.max(points[(0, i)]);
@@ -117,23 +117,38 @@ pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, bea
   //    }
   //}
   //
-  let max = max_x.max(max_y) + 5.;
-  let min = min_x.min(min_y) - 5.;
+  let max = max_x.max(max_y);
+  let min = min_x.min(min_y);
   let margin = 40;
   let root = BitMapBackend::new(path, (res_x, res_y))
     .into_drawing_area()
     .apply_coord_spec(Cartesian2d::<RangedCoordf64, RangedCoordf64>::new(
       min..max,
       max..min,
-      (40..(res_x - margin) as i32, 40..(res_y - margin) as i32),
+      //((0..res_x as i32),(0..res_y as i32))
+      ((margin as i32)..(res_x as i32 - margin) , (margin as i32)..(res_y as i32 - margin) ),
     ));
   root.fill(&WHITE).unwrap();
+  
 
+  //draw_box(max_x, min_x, max_y, min_y, &root);
   draw_coordinate_system(&root);
   draw_points(&root, &points);
   draw_beams(&root, points, beams);
   // And if we want SVG backend
   // let backend = SVGBackend::new("output.svg", (800, 600));
+}
+
+fn draw_box<DB: DrawingBackend>(
+  max_x: f64,
+  min_x: f64,
+  max_y: f64,
+  min_y: f64,
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>
+){
+  drawing_area.draw(
+    &PathElement::new(vec![(min_x,min_y),(min_x,max_y),(max_x,max_y),(max_x,min_y),(min_x,min_y)], &RED)
+  ).unwrap();
 }
 
 fn draw_coordinate_system<DB: DrawingBackend>(

@@ -416,6 +416,14 @@ fn get_testtragwerk() -> Fachwerk2D {
   return Fachwerk2D::new(points, beams);
 }
 
+fn get_loading_test2() -> Vec<Load2D> {
+  return vec![
+    Load2D::new_from_components(1, 3.0, 0.),
+    Load2D::new_from_components(4, 0., -2.0),
+    Load2D::new_from_components(5, 0., -1.0),
+  ];
+}
+
 fn get_testtragwerk2() -> Fachwerk2D {
   let points = vec![
     Point2D::new(
@@ -439,7 +447,7 @@ fn get_testtragwerk2() -> Fachwerk2D {
     Beam2D::new(3, 5, 10., 1.0),
     Beam2D::new(3, 6, 10., 1.0),
     Beam2D::new(4, 5, 10., 1.0),
-    //Beam2D::new(4, 6, 10., 1.0)
+    Beam2D::new(4, 6, 10., 1.0)
   ];
 
   return Fachwerk2D::new(points, beams);
@@ -490,7 +498,7 @@ fn main() {
   let points = trag.points;
 
   let mut count = [0; 10];
-  for i in (0..32).combinations(2) {
+  for i in (0..32).combinations(3) {
     let (beams, removed_beams) = remove_beams(&beams, &i);
     let points = points.clone();
     let trag = Fachwerk2D {
@@ -534,7 +542,8 @@ fn main() {
 
         let outer_work = flatten_matrix_loads.dot(&norm_deformations);
 
-        let norm_deformations = if outer_work >= 0. { 1. } else { -1. } * norm_deformations;
+        let norm_deformations = outer_work.signum() * norm_deformations;
+        let outer_work = outer_work.signum() * outer_work;
 
         let point_deformations = {
           let mut mut_norm_deformations = Point2DMatrix::zeros(num_points * 2);
@@ -566,12 +575,12 @@ fn main() {
 
           visualisation::visualise(&path, 400, 300, &points, &beams);
 
-          let mut points_defo = point_deformations.clone();
+          let points_defo = point_deformations.clone();
 
-          for i in 0..num_points {
-            points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
-            points_defo[(1, i)] = points[(1, i)] - 0.7 * &norm_deformations.row(0)[(2 * i + 1)];
-          }
+          //for i in 0..num_points {
+          //  points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
+          //  points_defo[(1, i)] = points[(1, i)] - 0.7 * &norm_deformations.row(0)[(2 * i + 1)];
+          //}
 
           let path = format!("Z-Resultfiles\\test{}v-{:2.2}.png", count[nullspace.ncols()],traglast);
           visualisation::visualise(&path, 400, 300, &points_defo, &beams);
