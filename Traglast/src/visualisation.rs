@@ -129,10 +129,22 @@ pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, bea
     ));
   root.fill(&WHITE).unwrap();
 
+  draw_coordinate_system(&root);
   draw_points(&root, &points);
   draw_beams(&root, points, beams);
   // And if we want SVG backend
   // let backend = SVGBackend::new("output.svg", (800, 600));
+}
+
+fn draw_coordinate_system<DB: DrawingBackend>(
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>
+){
+  drawing_area.draw(
+    &Polygon::new(vec![(0.,0.),(1.,0.)], &BLACK)
+  ).unwrap();
+  drawing_area.draw(
+    &Polygon::new(vec![(0.,0.),(0.,1.)], &BLACK)
+  ).unwrap();
 }
 
 fn draw_points<DB: DrawingBackend>(

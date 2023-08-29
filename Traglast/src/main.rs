@@ -362,10 +362,10 @@ fn get_inner_loading_matrix(
     let length_change = (diff_deformation.component_mul(&diff_deformation))
       .sum()
       .sqrt();
-    let signum = if length_change > ZERO_THRESHHOLD && (length - length_change) >= 0. {
-      1.
-    } else if length_change > ZERO_THRESHHOLD && (length - length_change) <= 0. {
+    let signum = if (length_change-length).abs() > ZERO_THRESHHOLD && length >= length_change {
       -1.
+    } else if (length_change-length).abs() > ZERO_THRESHHOLD && length <= length_change {
+      1.
     } else {
       0.
     };
@@ -534,7 +534,7 @@ fn main() {
 
         let outer_work = flatten_matrix_loads.dot(&norm_deformations);
 
-        let norm_deformations = if outer_work >= 0. { -1. } else { 1. } * norm_deformations;
+        let norm_deformations = if outer_work >= 0. { 1. } else { -1. } * norm_deformations;
 
         let point_deformations = {
           let mut mut_norm_deformations = Point2DMatrix::zeros(num_points * 2);
@@ -566,7 +566,7 @@ fn main() {
 
           visualisation::visualise(&path, 400, 300, &points, &beams);
 
-          let mut points_defo = points.clone();
+          let mut points_defo = point_deformations.clone();
 
           for i in 0..num_points {
             points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
