@@ -371,6 +371,32 @@ fn get_boolean_matrix(dofs: &DofMatrix, dof_num: usize, num_points: usize) -> Ri
   return bool_mat;
 }
 
+struct EigenvectorCache {
+  found_eigenvectors: Vec<OMatrix<f64, Dyn, Dyn>>,
+}
+
+impl EigenvectorCache {
+  pub fn new() -> Self {
+    return Self {
+      found_eigenvectors: Vec::new(),
+    };
+  }
+
+  pub fn is_contained(&self, other: &OMatrix<f64, Dyn, Dyn>) -> (usize, bool) {
+    for (i, vec) in self.found_eigenvectors.iter().enumerate() {
+      if (vec.normalize() - other.normalize()).norm() <= ZERO_THRESHHOLD {
+        return (i, true);
+      }
+    }
+    return (usize::MAX, false);
+  }
+
+  pub fn add_eigenvector(&mut self, other: &OMatrix<f64, Dyn, Dyn>) -> usize {
+    self.found_eigenvectors.push(other.normalize());
+    self.found_eigenvectors.len() - 1
+  }
+}
+
 fn main() {
   let trag = get_tragwerk();
   let beams = trag.beams;
@@ -379,99 +405,112 @@ fn main() {
   let beam_count = beams.len();
 
   let mut count = [0; 10];
-  for i in (0..beam_count).combinations(3) {
-    let (beams, removed_beams) = remove_beams(&beams, &i);
-    let points = points.clone();
-    let trag = Fachwerk2D {
-      beams,
-      points: points,
-    };
+  let mut eigencache = EigenvectorCache::new();
+  let mut min_traglast = f64::MAX;
+  for j in 1..=3 {
+    for i in (0..beam_count).combinations(j) {
+      let (beams, removed_beams) = remove_beams(&beams, &i);
+      let points = points.clone();
+      let trag = Fachwerk2D {
+        beams,
+        points: points,
+      };
 
-    let (points, beams, dofmatrix, dof_num, indexmap) = trag.matrix_form();
+      let (points, beams, dofmatrix, dof_num, indexmap) = trag.matrix_form();
 
-    let num_points = points.ncols();
-    //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
+      let num_points = points.ncols();
+      //let erdscheiben_connections = binomial(erdscheibe.len(), 2);
 
-    let mat = get_rigidity_matrix(&points, &beams);
+      let mat = get_rigidity_matrix(&points, &beams);
 
-    let bool_mat = get_boolean_matrix(&dofmatrix, dof_num as usize, num_points);
+      let bool_mat = get_boolean_matrix(&dofmatrix, dof_num as usize, num_points);
 
-    let mat = mat * &bool_mat;
-    let rank = mat.rank(ZERO_THRESHHOLD);
+      let mat = mat * &bool_mat;
+      let rank = mat.rank(ZERO_THRESHHOLD);
 
-    if let Some(YX) = svd_helper::get_nullspace(&mat) {
-      let x = YX.1; // Mechanism
-      let nullspace = x.view((0, rank), (dof_num as usize, dof_num as usize - rank));
-      let deformations = nullspace.transpose() * bool_mat.transpose();
+      if let Some(YX) = svd_helper::get_nullspace(&mat) {
+        let x = YX.1; // Mechanism
+        let nullspace = x.view((0, rank), (dof_num as usize, dof_num as usize - rank));
+        let deformations = nullspace.transpose() * bool_mat.transpose();
 
-      count[nullspace.ncols()] += 1;
+        count[nullspace.ncols()] += 1;
 
-      if nullspace.ncols() == 1 {
-        let loads = get_loading();
-        let (map_vec, matrix_loads) = get_loading_matrix_form(loads, &indexmap);
-        let outer_work_matrix = get_loading_flatten_form(&map_vec, &matrix_loads, num_points);
+        if nullspace.ncols() == 1 {
+          let loads = get_loading();
+          let (map_vec, matrix_loads) = get_loading_matrix_form(loads, &indexmap);
+          let outer_work_matrix = get_loading_flatten_form(&map_vec, &matrix_loads, num_points);
 
-        let norm_deformations = 1.
-          / (deformations
-            .iter()
-            .map(|f| f.abs())
-            .max_by(|a, b| a.partial_cmp(&b).unwrap()))
-          .unwrap()
-          * &deformations;
+          let norm_deformations = 1.
+            / (deformations
+              .iter()
+              .map(|f| f.abs())
+              .max_by(|a, b| a.partial_cmp(&b).unwrap()))
+            .unwrap()
+            * &deformations;
 
-        let outer_work = outer_work_matrix.dot(&norm_deformations);
-
-        let norm_deformations = outer_work.signum() * norm_deformations;
-        let outer_work = outer_work.signum() * outer_work;
-
-        let point_deformations = {
-          let mut mut_norm_deformations = Point2DMatrix::zeros(num_points);
-          for i in 0..num_points {
-            mut_norm_deformations[(0, i)] = points[(0, i)] + norm_deformations.row(0)[(2 * i)];
-            mut_norm_deformations[(1, i)] = points[(1, i)] + norm_deformations.row(0)[(2 * i + 1)];
+          let m = eigencache.is_contained(&norm_deformations);
+          let mut k = 0;
+          if m.1 {
+            k = m.0;
+            continue;
+          } else {
+            k = eigencache.add_eigenvector(&norm_deformations);
           }
-          mut_norm_deformations
-        };
+          let k = k;
 
-        let inner_loads =
-          get_inner_loading_matrix(&removed_beams, &indexmap, &points, &point_deformations);
+          let outer_work = outer_work_matrix.dot(&norm_deformations);
 
-        //println!("{:2.2}",inner_loads.transpose());
+          let norm_deformations = outer_work.signum() * norm_deformations;
+          let outer_work = outer_work.signum() * outer_work;
 
-        //println!("{:2.2}",norm_deformations.transpose());
+          let point_deformations = {
+            let mut mut_norm_deformations = Point2DMatrix::zeros(num_points);
+            for i in 0..num_points {
+              mut_norm_deformations[(0, i)] = points[(0, i)] + norm_deformations.row(0)[(2 * i)];
+              mut_norm_deformations[(1, i)] =
+                points[(1, i)] + norm_deformations.row(0)[(2 * i + 1)];
+            }
+            mut_norm_deformations
+          };
 
-        let inner_work = inner_loads.dot(&norm_deformations);
+          let inner_loads =
+            get_inner_loading_matrix(&removed_beams, &indexmap, &points, &point_deformations);
 
-        let traglast = if outer_work.abs() > ZERO_THRESHHOLD {
-          -inner_work / outer_work
-        } else {
-          f64::INFINITY
-        };
-        //println!("{:2.2}", traglast);
+          //println!("{:2.2}",inner_loads.transpose());
 
-        if outer_work > ZERO_THRESHHOLD && traglast.is_finite() {
-          let path = format!(
-            "Z-Resultfiles\\test{}-{:2.2}.png",
-            count[nullspace.ncols()],
-            traglast
-          );
+          //println!("{:2.2}",norm_deformations.transpose());
 
-          visualisation::visualise(&path, 400, 300, &points, &beams, &inner_loads);
+          let inner_work = inner_loads.dot(&norm_deformations);
 
-          let points_defo = point_deformations.clone();
+          let traglast = if outer_work.abs() > ZERO_THRESHHOLD {
+            -inner_work / outer_work
+          } else {
+            f64::INFINITY
+          };
+          //println!("{:2.2}", traglast);
 
-          let path = format!(
-            "Z-Resultfiles\\test{}v-{:2.2}.png",
-            count[nullspace.ncols()],
-            traglast
-          );
-          visualisation::visualise(&path, 400, 300, &points_defo, &beams, &outer_work_matrix);
+          if outer_work > ZERO_THRESHHOLD && traglast.is_finite() {
+            min_traglast = traglast.min(min_traglast);
+            let path = format!(
+              "Z-Resultfiles\\test{}-{}-{:2.3}.png",
+              k,
+              count[nullspace.ncols()],
+              traglast
+            );
+
+            visualisation::visualise(&path, 400, 300, &points, &beams, &inner_loads);
+
+            let points_defo = point_deformations.clone();
+
+            let path = format!("Z-Resultfiles\\test{}v-{}.png", k, count[nullspace.ncols()],);
+            visualisation::visualise(&path, 400, 300, &points_defo, &beams, &outer_work_matrix);
+          }
         }
       }
     }
   }
 
-  println!("{:?}", count);
+  println!("{:?},{:2.4}", count, min_traglast);
 
   //
 
