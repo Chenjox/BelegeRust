@@ -384,7 +384,7 @@ impl EigenvectorCache {
 
   pub fn is_contained(&self, other: &OMatrix<f64, Dyn, Dyn>) -> (usize, bool) {
     for (i, vec) in self.found_eigenvectors.iter().enumerate() {
-      if (vec.normalize() - other.normalize()).norm() <= ZERO_THRESHHOLD {
+      if (vec.normalize() - other.normalize()).norm() <= ZERO_THRESHHOLD*1e5 {
         return (i, true);
       }
     }
@@ -407,7 +407,7 @@ fn main() {
   let mut count = [0; 10];
   let mut eigencache = EigenvectorCache::new();
   let mut min_traglast = f64::MAX;
-  for j in 1..=3 {
+  for j in 1..=4 {
     for i in (0..beam_count).combinations(j) {
       let (beams, removed_beams) = remove_beams(&beams, &i);
       let points = points.clone();
@@ -448,6 +448,13 @@ fn main() {
             .unwrap()
             * &deformations;
 
+          
+
+          let outer_work = outer_work_matrix.dot(&norm_deformations);
+
+          let norm_deformations = outer_work.signum() * norm_deformations;
+          let outer_work = outer_work.signum() * outer_work;
+
           let m = eigencache.is_contained(&norm_deformations);
           let mut k = 0;
           if m.1 {
@@ -457,11 +464,6 @@ fn main() {
             k = eigencache.add_eigenvector(&norm_deformations);
           }
           let k = k;
-
-          let outer_work = outer_work_matrix.dot(&norm_deformations);
-
-          let norm_deformations = outer_work.signum() * norm_deformations;
-          let outer_work = outer_work.signum() * outer_work;
 
           let point_deformations = {
             let mut mut_norm_deformations = Point2DMatrix::zeros(num_points);
