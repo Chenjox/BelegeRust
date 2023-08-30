@@ -120,3 +120,36 @@ fn get_testtragwerk2() -> Fachwerk2D {
 
   return Fachwerk2D::new(points, beams);
 }
+
+fn get_tragwerk_tutorium() -> Fachwerk2D {
+  let points = vec![
+    Point2D::new(
+      1,
+      0.,
+      0.,
+      vec![CONSTRAINS::XRestrain, CONSTRAINS::YRestrain],
+    ),
+    Point2D::new(2, 9., 4., vec![CONSTRAINS::XRestrain, CONSTRAINS::YRestrain]),
+    Point2D::new_unconstrained(3, 0., 7.),
+    Point2D::new_unconstrained(4, 3., 4.),
+    Point2D::new_unconstrained(5, 6., 7.),
+  ];
+  let beams = vec![
+    Beam2D::new(1, 3, 1., 1.0),
+    Beam2D::new(1, 4, 1., 1.0),
+    Beam2D::new(2, 4, 1., 1.0),
+    Beam2D::new(2, 5, 1., 1.0),
+    Beam2D::new(5, 3, 1., 1.0),
+    Beam2D::new(5, 4, 1., 1.0),
+    Beam2D::new(3, 4, 1., 1.0),
+  ];
+
+  return Fachwerk2D::new(points, beams);
+}
+
+fn get_loading_tutorium() -> Vec<Load2D> {
+  return vec![
+    Load2D::new_from_components(3, -1.0, 0.),
+    Load2D::new_from_components(4, 0., -1.0),
+  ];
+}

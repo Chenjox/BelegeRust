@@ -244,7 +244,6 @@ impl Load2D {
   }
 }
 
-
 /// Returns a Matrix of every Loads x and y component, similar to the point matrix.
 /// also returns a Vector indicating the node of the load
 fn get_loading_matrix_form(loads: Vec<Load2D>, map: &Indexmap) -> (Vec<usize>, Load2DMatrix) {
@@ -270,10 +269,9 @@ fn get_loading_flatten_form(
   num_points: usize,
 ) -> Load2DFlattenMatrix {
   let mut mat = Load2DFlattenMatrix::zeros(num_points * 2);
-
   for (index, point_index) in map_vec.iter().enumerate() {
-    mat[(2 * point_index)] = load_matrix[(0, index)];
-    mat[(2 * point_index + 1)] = load_matrix[(1, index)];
+    mat[(2 * point_index)] += load_matrix[(0, index)];
+    mat[(2 * point_index + 1)] += load_matrix[(1, index)];
   }
   return mat;
 }
@@ -306,9 +304,9 @@ fn get_inner_loading_matrix(
     let length_change = (diff_deformation.component_mul(&diff_deformation))
       .sum()
       .sqrt();
-    let signum = if (length_change-length).abs() > ZERO_THRESHHOLD && length >= length_change {
+    let signum = if (length_change - length).abs() > ZERO_THRESHHOLD && length >= length_change {
       -1.
-    } else if (length_change-length).abs() > ZERO_THRESHHOLD && length <= length_change {
+    } else if (length_change - length).abs() > ZERO_THRESHHOLD && length <= length_change {
       1.
     } else {
       0.
@@ -321,8 +319,8 @@ fn get_inner_loading_matrix(
     );
     let load_to = Load2D::new_from_components(
       beam.to,
-      signum * cos * beam.nplast,
-      signum * sin * beam.nplast,
+      -signum * cos * beam.nplast,
+      -signum * sin * beam.nplast,
     );
     res.push(load_from);
     res.push(load_to);
@@ -333,8 +331,6 @@ fn get_inner_loading_matrix(
 
   return flatten_mat;
 }
-
-
 
 fn get_rigidity_matrix(points: &Point2DMatrix, beams: &Beam2DMatrix) -> RigidMatrix {
   let mut mat = RigidMatrix::zeros(beams.ncols(), points.ncols() * 2);
@@ -380,8 +376,10 @@ fn main() {
   let beams = trag.beams;
   let points = trag.points;
 
+  let beam_count = beams.len();
+
   let mut count = [0; 10];
-  for i in (0..32).combinations(3) {
+  for i in (0..beam_count).combinations(3) {
     let (beams, removed_beams) = remove_beams(&beams, &i);
     let points = points.clone();
     let trag = Fachwerk2D {
@@ -411,7 +409,7 @@ fn main() {
       if nullspace.ncols() == 1 {
         let loads = get_loading();
         let (map_vec, matrix_loads) = get_loading_matrix_form(loads, &indexmap);
-        let flatten_matrix_loads = get_loading_flatten_form(&map_vec, &matrix_loads, num_points);
+        let outer_work_matrix = get_loading_flatten_form(&map_vec, &matrix_loads, num_points);
 
         let norm_deformations = 1.
           / (deformations
@@ -421,15 +419,13 @@ fn main() {
           .unwrap()
           * &deformations;
 
-        
-
-        let outer_work = flatten_matrix_loads.dot(&norm_deformations);
+        let outer_work = outer_work_matrix.dot(&norm_deformations);
 
         let norm_deformations = outer_work.signum() * norm_deformations;
         let outer_work = outer_work.signum() * outer_work;
 
         let point_deformations = {
-          let mut mut_norm_deformations = Point2DMatrix::zeros(num_points * 2);
+          let mut mut_norm_deformations = Point2DMatrix::zeros(num_points);
           for i in 0..num_points {
             mut_norm_deformations[(0, i)] = points[(0, i)] + norm_deformations.row(0)[(2 * i)];
             mut_norm_deformations[(1, i)] = points[(1, i)] + norm_deformations.row(0)[(2 * i + 1)];
@@ -446,27 +442,30 @@ fn main() {
 
         let inner_work = inner_loads.dot(&norm_deformations);
 
-        let traglast = if inner_work.abs() > ZERO_THRESHHOLD {
-          -outer_work / inner_work
+        let traglast = if outer_work.abs() > ZERO_THRESHHOLD {
+          -inner_work / outer_work
         } else {
           f64::INFINITY
         };
         //println!("{:2.2}", traglast);
 
-        if outer_work > ZERO_THRESHHOLD && traglast.is_finite() && traglast > 0.0 {
-          let path = format!("Z-Resultfiles\\test{}-{:2.2}.png", count[nullspace.ncols()],traglast);
+        if outer_work > ZERO_THRESHHOLD && traglast.is_finite() {
+          let path = format!(
+            "Z-Resultfiles\\test{}-{:2.2}.png",
+            count[nullspace.ncols()],
+            traglast
+          );
 
-          visualisation::visualise(&path, 400, 300, &points, &beams);
+          visualisation::visualise(&path, 400, 300, &points, &beams, &inner_loads);
 
           let points_defo = point_deformations.clone();
 
-          //for i in 0..num_points {
-          //  points_defo[(0, i)] = points[(0, i)] - 0.7 * &norm_deformations.row(0)[(2 * i)];
-          //  points_defo[(1, i)] = points[(1, i)] - 0.7 * &norm_deformations.row(0)[(2 * i + 1)];
-          //}
-
-          let path = format!("Z-Resultfiles\\test{}v-{:2.2}.png", count[nullspace.ncols()],traglast);
-          visualisation::visualise(&path, 400, 300, &points_defo, &beams);
+          let path = format!(
+            "Z-Resultfiles\\test{}v-{:2.2}.png",
+            count[nullspace.ncols()],
+            traglast
+          );
+          visualisation::visualise(&path, 400, 300, &points_defo, &beams, &outer_work_matrix);
         }
       }
     }

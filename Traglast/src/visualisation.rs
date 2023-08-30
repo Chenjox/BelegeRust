@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 
-use nalgebra::{Matrix1, Matrix2};
+use nalgebra::{Matrix1, Matrix2, Vector2};
 use numerals::roman::Roman;
 use plotters::coord::types::RangedCoordf64;
 use plotters::prelude::full_palette::{
@@ -9,9 +9,10 @@ use plotters::prelude::full_palette::{
 };
 use plotters::prelude::*;
 
-use crate::{Beam2DMatrix, Point2DMatrix};
+use crate::{Beam2DMatrix, Load2DFlattenMatrix, Point2DMatrix};
 
 type S2x2 = Matrix2<f64>;
+type S2 = Vector2<f64>;
 type TPoint = (f64, f64);
 
 //
@@ -95,7 +96,14 @@ static PALETTE: [RGBColor; 10] = [
   BLUEGREY_800,
 ];
 
-pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, beams: &Beam2DMatrix) {
+pub fn visualise(
+  path: &str,
+  res_x: u32,
+  res_y: u32,
+  points: &Point2DMatrix,
+  beams: &Beam2DMatrix,
+  loads: &Load2DFlattenMatrix,
+) {
   // Ein paar diagnosti
   let mut max_x: f64 = f64::MIN;
   let mut min_x: f64 = f64::MAX;
@@ -126,17 +134,49 @@ pub fn visualise(path: &str, res_x: u32, res_y: u32, points: &Point2DMatrix, bea
       min..max,
       max..min,
       //((0..res_x as i32),(0..res_y as i32))
-      ((margin as i32)..(res_x as i32 - margin) , (margin as i32)..(res_y as i32 - margin) ),
+      (
+        (margin as i32)..(res_x as i32 - margin),
+        (margin as i32)..(res_y as i32 - margin),
+      ),
     ));
   root.fill(&WHITE).unwrap();
-  
 
   //draw_box(max_x, min_x, max_y, min_y, &root);
   draw_coordinate_system(&root);
   draw_points(&root, &points);
   draw_beams(&root, points, beams);
+  draw_loads(&root, &loads, &points)
   // And if we want SVG backend
   // let backend = SVGBackend::new("output.svg", (800, 600));
+}
+
+fn draw_loads<DB: DrawingBackend>(
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+  loads: &Load2DFlattenMatrix,
+  points: &Point2DMatrix,
+) {
+  //println!("{:?},{:?}",points.shape(),loads.shape());
+
+  for (i, point) in points.column_iter().enumerate() {
+    let coords = point;
+    let loadvec = { S2::new(loads[2 * i], loads[2 * i + 1]) }.normalize();
+    let begin_load = coords - loadvec * 1.1;
+    let end_load = coords - loadvec * 0.1;
+    let arrow1 = end_load - get_rot_matrix(PI / 4.0) * loadvec * 0.2;
+    let arrow2 = end_load - get_rot_matrix(-PI / 4.0) * loadvec * 0.2;
+    drawing_area
+      .draw(&PathElement::new(
+        vec![
+          (begin_load.x, begin_load.y),
+          (end_load.x, end_load.y),
+          (arrow1.x, arrow1.y),
+          (arrow2.x, arrow2.y),
+          (end_load.x, end_load.y),
+        ],
+        &RED,
+      ))
+      .unwrap();
+  }
 }
 
 fn draw_box<DB: DrawingBackend>(
@@ -144,22 +184,31 @@ fn draw_box<DB: DrawingBackend>(
   min_x: f64,
   max_y: f64,
   min_y: f64,
-  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>
-){
-  drawing_area.draw(
-    &PathElement::new(vec![(min_x,min_y),(min_x,max_y),(max_x,max_y),(max_x,min_y),(min_x,min_y)], &RED)
-  ).unwrap();
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+) {
+  drawing_area
+    .draw(&PathElement::new(
+      vec![
+        (min_x, min_y),
+        (min_x, max_y),
+        (max_x, max_y),
+        (max_x, min_y),
+        (min_x, min_y),
+      ],
+      &RED,
+    ))
+    .unwrap();
 }
 
 fn draw_coordinate_system<DB: DrawingBackend>(
-  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>
-){
-  drawing_area.draw(
-    &Polygon::new(vec![(0.,0.),(1.,0.)], &BLACK)
-  ).unwrap();
-  drawing_area.draw(
-    &Polygon::new(vec![(0.,0.),(0.,1.)], &BLACK)
-  ).unwrap();
+  drawing_area: &DrawingArea<DB, Cartesian2d<RangedCoordf64, RangedCoordf64>>,
+) {
+  drawing_area
+    .draw(&Polygon::new(vec![(0., 0.), (1., 0.)], &BLACK))
+    .unwrap();
+  drawing_area
+    .draw(&Polygon::new(vec![(0., 0.), (0., 1.)], &BLACK))
+    .unwrap();
 }
 
 fn draw_points<DB: DrawingBackend>(
