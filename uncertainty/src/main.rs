@@ -1,12 +1,15 @@
 use std::{f64::consts::PI, fs::File};
 
 use fuzzy::{FuzzyAnalysis, FuzzyTriangularNumber};
+use rand::{Rng, thread_rng};
+use stochastic::{NormalDistributedVariable, StochasticAnalysis, StochasticVariable, LogNormalDistributedVariable};
 
 use crate::fuzzy::{EmpiricalFuzzyNumber, FuzzyNumber};
 use std::io::Write;
 
 mod fuzzy;
 mod optimizer;
+mod stochastic;
 
 struct ExcentricBeam {
   levels: Vec<f64>,
@@ -52,7 +55,50 @@ fn get_inters(low: f64, high: f64, num_samples: u32) -> Vec<f64> {
   result
 }
 
+struct Grenzzustandsfunktion {
+  param: f64
+}
+
+impl<R: Rng> StochasticAnalysis<R> for Grenzzustandsfunktion {
+  fn get_distributions(&self) -> Vec<Box<dyn StochasticVariable<R>>> {
+      return vec![Box::new(NormalDistributedVariable::new(230.0, 50.0)),Box::new(LogNormalDistributedVariable::new(27.70e4,2.01e4,19.95e4))];
+  }
+  fn output_function(&self, input_vec: &Vec<f64>) -> f64 {
+      return input_vec[0] * self.param - input_vec[1];
+  }
+}
+
 fn main() {
+  let mut rng = thread_rng();
+
+  let stoch = Grenzzustandsfunktion {
+    param: 1052.85319
+  };
+
+  let erg = stoch.stochastics_analysis(0.66, 1e-3, 0.95, &mut rng);
+
+  println!("{:?}",erg.get_samples().len());
+
+  for i in 1..20 {
+    let qua = 1.0/20.0 * i as f64;
+    println!("{}, {}", qua, erg.quantile(qua));
+  }
+
+  println!("a) = {}",erg.get_probability_of(0.0));
+
+  let stoch = Grenzzustandsfunktion {
+    param: 654.309
+  };
+
+  let erg = stoch.stochastics_analysis(0.95, 1e-3, 0.95, &mut rng);
+
+  println!("{:?}",erg.get_samples().len());
+
+  println!("b) = {}",erg.get_probability_of(0.0));
+
+}
+
+fn main2() {
   let ex = ExcentricBeam {
     levels: vec![0.0, 0.5, 1.0], //get_inters(0.0, 1.0, 3),
   };
