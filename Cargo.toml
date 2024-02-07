@@ -12,6 +12,7 @@ members = [
     "LinOptimierung",
     "gradient_optimization",
     "traglast",
+    "polplan",
     "drehwinkel",
     "dynamik_belege",
     "sensitivity",

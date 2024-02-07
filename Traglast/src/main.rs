@@ -407,7 +407,7 @@ fn main() {
   let mut count = [0; 10];
   let mut eigencache = EigenvectorCache::new();
   let mut min_traglast = f64::MAX;
-  for j in 1..=4 {
+  for j in 1..=3 {
     for i in (0..beam_count).combinations(j) {
       let (beams, removed_beams) = remove_beams(&beams, &i);
       let points = points.clone();
