@@ -9,13 +9,13 @@ fn main(){
   println!("Hello World");
 
 
-  let points = vec![Point2::new(0.,0.), Point2::new(1.,0.0), Point2::new(2.,0.0),Point2::new(3.,0.)];
-  let constrained = vec![true,false,false,true];
+  let points = vec![Point2::new(0.,0.), Point2::new(1.,0.0),Point2::new(2.,0.)];
+  let constrained = vec![true,false,true];
 
   // Alles in homogenen Coordinaten
   let hom_points: Vec<Vector3<f64>> = points.iter().map(|p| p.to_homogeneous().normalize()).collect();
 
-  let edges = vec![[0,1],[1,2],[2,3]];
+  let edges = vec![[0,1],[1,2]];
   let dim = 2;
 
   let num_vertices = hom_points.len();
