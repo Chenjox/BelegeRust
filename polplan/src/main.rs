@@ -1,7 +1,9 @@
-use nalgebra::{constraint, Dyn, OMatrix, Point2, Vector3};
+use nalgebra::{constraint, Dyn, OMatrix, Point2, Vector2, Vector3};
+
+use crate::svd_helper::get_nullspace;
 
 
-
+mod svd_helper;
 
 fn main(){
   println!("Hello World");
@@ -75,19 +77,13 @@ fn main(){
 
 
   let rank = reduced_rigidity_matrix.rank(1e-10);
-  let svd = reduced_rigidity_matrix.transpose().svd(true, true);
-  let qr = reduced_rigidity_matrix.transpose().qr();
-  let null = qr.q().transpose();
-  let rot = qr.r();
-  //let sing = svd.singular_values;
-  //let null = svd.u.unwrap();
+  if let Some((left, right)) = get_nullspace(&reduced_rigidity_matrix) {
 
+    let null = right.transpose();
+    let null_space = null.rows(rank, null.nrows()-rank);
 
-  //println!("{:3.3}",sing);
-  println!("Q = {:3.3}",null);
-  println!("R = {:3.3}",rot);
+    println!("{:3.3},{:3.3}",left,null);
+    println!("{:3.3}",null_space);
+  };
 
-  let null_space = null.rows(rank, null.nrows()-rank);
-
-  println!("{:3.3}",null_space);
 }
