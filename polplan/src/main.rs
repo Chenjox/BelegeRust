@@ -8,14 +8,24 @@ mod svd_helper;
 fn main(){
   println!("Hello World");
 
-
+  let lines = vec![Point2::new(0.0,1.0)];
   let points = vec![Point2::new(0.,0.), Point2::new(1.,0.0),Point2::new(2.,0.)];
-  let constrained = vec![true,false,true];
+  let constrained = vec![false,false,false,true];
 
   // Alles in homogenen Coordinaten
-  let hom_points: Vec<Vector3<f64>> = points.iter().map(|p| p.to_homogeneous().normalize()).collect();
+  let mut hom_points: Vec<Vector3<f64>> = points.iter().map(|p| p.to_homogeneous().normalize()).collect();
+  let mut hom_lines: Vec<Vector3<f64>> = lines.iter().map(|p| {
+    let mut new_p = p.to_homogeneous();
+    new_p[2] = 0.0;
+    new_p.normalize()
+    }
+  ).collect();
 
-  let edges = vec![[0,1],[1,2]];
+  hom_points.append(&mut hom_lines);
+
+  let hom_points = hom_points;
+
+  let edges = vec![[0,1],[1,2],[2,3],[0,3]];
   let dim = 2;
 
   let num_vertices = hom_points.len();
@@ -82,8 +92,42 @@ fn main(){
     let null = right.transpose();
     let null_space = null.rows(rank, null.nrows()-rank);
 
-    println!("{:3.3},{:3.3}",left,null);
-    println!("{:3.3}",null_space);
+    //println!("{:3.3},{:3.3}",left,null);
+    //println!("{:3.3}",null_space);
+    let null_space_size = null.nrows() - rank;
+
+    let mut solution_matrix_real_space = OMatrix::<f64,Dyn,Dyn>::zeros(null_space_size, dim*(num_vertices-num_constrained));
+
+    for point_index in 0..(num_vertices-num_constrained) {
+      let view = null_space.columns_with_step(point_index*projective_dim, projective_dim, 0);
+
+      let point = hom_points[point_index];
+      let point = point / point[2];
+
+      let velo = view*point.norm();
+      println!("{:3.3}",velo);
+      for i in 0..null_space_size {
+        for j in 0..dim {
+          solution_matrix_real_space[(i,point_index*dim+j)] = velo[(i,j)];
+        }
+      }
+    }
+
+    // Das sind alle Basisvektoren der Mechanismen des Tragwerks
+    println!("{:3.3}",solution_matrix_real_space);
+    // die sind linear unabhängig, aber nicht zwangsweise orthogonal
+    // ergo: basiswechsel ist angesagt.
+    let mut angle_matrix = OMatrix::<f64,Dyn,Dyn>::zeros(null_space_size,null_space_size);
+    for i in 0..null_space_size {
+      for j in 0..null_space_size {
+        angle_matrix[(i,j)] = solution_matrix_real_space.row(i).dot(&solution_matrix_real_space.row(j));
+      }
+    }
+    // Diese Matrix wird _immer_ positiv semidefinit sein und symmetrisch = LU oder Cholesky
+    println!("{:3.3}",angle_matrix);
+    let chol = angle_matrix.symmetric_eigen();
+    let orthogonalest_mechanism = chol.eigenvectors*solution_matrix_real_space;
+    println!("{:3.3}",orthogonalest_mechanism)
   };
 
 }
