@@ -11,7 +11,7 @@ members = [
     "VonMises",
     "LinOptimierung",
     "gradient_optimization",
-    "traglast",
+    "Traglast",
     "polplan",
     "drehwinkel",
     "dynamik_belege",
@@ -20,5 +20,6 @@ members = [
     "uncertainty",
     "stat_entwerfen",
     "antwortspektrum",
+    "reliability",
     "misc"
 ]
