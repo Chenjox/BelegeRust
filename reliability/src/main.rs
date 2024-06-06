@@ -72,12 +72,11 @@ fn integrate_function<T: IntegrableFunction>(func: &T, start_point: f64, step_si
   let mut large_sum = 0.0;
   loop {
     let mut small_sum = 0.0;
-    let length = upper_val - lower_val;
     for i in 0..3 {
-      let x_val = double_exponential_transformation(1.0, lower_val + length * simpson_places[i]);
-      let func_val = func.function_value(x_val[0])*x_val[1]*simpson_weights[i];
+      let x_val = double_exponential_transformation(1.0, lower_val + step_size * simpson_places[i]);
+      let func_val = step_size*func.function_value(x_val[0])*x_val[1]*simpson_weights[i];
       if !func_val.is_finite() {
-        return None;
+        break;
       }
       small_sum += func_val
     }
@@ -89,9 +88,29 @@ fn integrate_function<T: IntegrableFunction>(func: &T, start_point: f64, step_si
     lower_val = upper_val;
     upper_val += step_size;
   }
+  // now everything behind
+  let mut lower_val = start_point - step_size;
+  let mut upper_val = start_point;
   
-
-
+  loop {
+    let mut small_sum = 0.0;
+    for i in 0..3 {
+      let x_val = double_exponential_transformation(1.0, upper_val - step_size * simpson_places[i]);
+      let func_val = step_size*func.function_value(x_val[0])*x_val[1]*simpson_weights[i];
+      if !func_val.is_finite() {
+        break;
+      }
+      small_sum += func_val
+    }
+    if small_sum.abs() < epsilon {
+      break
+    }
+    //println!("{},{},{}",small_sum,lower_val,upper_val);
+    large_sum += small_sum;
+    upper_val = lower_val;
+    lower_val -= step_size;
+  }
+  
   return Some(large_sum)
 }
 
@@ -101,24 +120,42 @@ struct TestFun {
 
 impl IntegrableFunction for TestFun {
   fn function_value(&self,x: f64) -> f64 {
-      (-x.powi(2)).exp()
+      1.0/(2.0 * std::f64::consts::PI).sqrt() *(-0.5*x.powi(2)).exp()
+  }
+}
+
+struct Task1 {
+  load_vec: Vec<f64>,
+  area_vec: Vec<f64>
+}
+
+impl IntegrableFunction for Task1 {
+  fn function_value(&self,x: f64) -> f64 {
+    let fy = LogNormal::new(30.20e4,1.44e4,19.9e4);
+    let load = Gumbel::new(410.0,70.0);
+    
+    let mut prod = 1.0;
+    for i in 0..self.load_vec.len() {
+      prod *= 1.0 - fy.cdf(self.load_vec[i]/self.area_vec[i]*x)
+    }
+
+    return prod*load.pdf(x);
   }
 }
 
 fn main(){
-  let fy = LogNormal::new(30.20e4,1.44e4,19.9e4);
-  let load = Gumbel::new(410.0,70.0);
 
-  let load_mat = mat![
-    [1.0, 5.0, 9.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  ];
+  let task1 = Task1 {
+    load_vec: vec![],
+    area_vec: vec![]
+  };
 
   let test = TestFun{};
 
-  if let Some(result) = integrate_function(&test, 0.0, 1.0, 1e-5) {
+  if let Some(result) = integrate_function(&test, 0.0, 0.01, 1e-15) {
     println!("{}",result);
   };
 
-  println!("{}",load.pdf(60.0));
-  println!("{}",fy.cdf(50.0e4));
+  //println!("{}",load.pdf(60.0));
+  //println!("{}",fy.cdf(50.0e4));
 }
