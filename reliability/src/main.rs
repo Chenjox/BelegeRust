@@ -224,21 +224,13 @@ struct Task3 {
   load_vec: Vec<f64>,
   area: Vec<f64>,
   length: Vec<f64>,
+  buckling_length: Vec<f64>,
   ftm: Vec<f64>,
-  youngs_modulus: Vec<f64>
-}
+  youngs_modulus: f64
+} 
 
-struct Task3Buckling {
-  load_factor: f64,
-  youngs_modulus: f64,
-  ftm: f64,
-  length: f64,
-  buckling_length: f64
-}
-
-impl IntegrableFunction for Task3Buckling {
-  fn function_value(&self, x: f64) -> f64 {
-    
+impl Task3 {
+  fn get_erg(&self) -> f64 {
     let mean = 410.0;
     let std_dev = 70.0;
 
@@ -247,10 +239,54 @@ impl IntegrableFunction for Task3Buckling {
 
     let load = Gumbel::new(mu, beta);
 
-    let critical_load = self.youngs_modulus * self.ftm* std::f64::consts::PI.powi(2) / (self.length * self.buckling_length).powi(2);
-    let point = critical_load/self.load_factor;
+    let mut max_prob_of_buckling_fail: f64 = 0.0;
+    for i in 0..self.load_vec.len() {
+      if self.load_vec[i] < 0.0 {
+        let buckling_prob = Task3Buckling {
+          load_distro: load,
+          load_factor: self.load_vec[i],
+          youngs_modulus: self.youngs_modulus,
+          ftm: self.ftm[i],
+          length: self.length[i],
+          buckling_length: self.buckling_length[i]
+        };
 
-    return load.cdf
+
+        let critical_load = self.youngs_modulus * self.ftm[i] * std::f64::consts::PI.powi(2) / (self.length[i] * self.buckling_length[i]).powi(2);
+
+        let erg = integrate_function(&buckling_prob, critical_load+std_dev, std_dev*0.01, 1e-15).unwrap();
+
+        println!("{},{}",i,erg);
+        max_prob_of_buckling_fail = max_prob_of_buckling_fail.max(erg);
+      }
+    }
+    println!("{}",max_prob_of_buckling_fail);
+
+    return max_prob_of_buckling_fail;
+
+  }
+}
+
+struct Task3Buckling<T : Continuous<PDFType = f64>> {
+  load_distro: T,
+  load_factor: f64,
+  youngs_modulus: f64,
+  ftm: f64,
+  length: f64,
+  buckling_length: f64
+}
+
+impl<T: Continuous<PDFType = f64>> IntegrableFunction for Task3Buckling<T> {
+  fn function_value(&self, x: f64) -> f64 {
+    
+    let critical_load = self.youngs_modulus * self.ftm* std::f64::consts::PI.powi(2) / (self.length * self.buckling_length).powi(2);
+    let point = -critical_load/self.load_factor;
+
+    return if x < point { // Integrationsgrenzen für arme
+      0.0
+    } else {
+      self.load_distro.pdf(x)
+    }
   }
 }
 
@@ -275,11 +311,48 @@ fn main() {
 
 
   //task1.test1();
+  let mut task1_failure = 0.0;
   if let Some(erg) = task1.erg() {
-    println!("{}", erg);
+    task1_failure = erg;
   }
+  let task1_failure = task1_failure;
+  println!("Task 1: ");
+  println!("{}", task1_failure);
 
-  println!("{}", Task2::erg());
+  println!("Task 2: ");
+  let task2_failure = Task2::erg();
+  println!("{}", task2_failure);
+
+  println!("Task 3: ");
+  let task3 = Task3 {
+    load_vec: vec![
+      0.0,
+      1.0,
+      0.0,
+      5.0 / 4.0,
+      -3.0 / 4.0,
+      -2.0_f64.sqrt(),
+      -1.0,
+      3.0 / 4.0,
+      0.0,
+      -7.0 / 4.0
+    ],
+    area: vec![
+      3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 4.7e-3, 3.77e-3, 3.77e-3, 3.77e-3, 5.74e-3
+    ],
+    length: vec![
+      5.6, 4.2, 4.2, 7.0, 4.2, 35.28_f64.sqrt(), 5.6, 4.2, 7.0, 4.2
+    ],
+    buckling_length: vec![
+      1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
+    ],
+    ftm: vec![
+      1.46e-5,1.46e-5,1.46e-5,1.46e-5,1.46e-5,1.78e-5,1.46e-5,1.46e-5,1.46e-5,2.10e-5
+    ],
+    youngs_modulus: 2.1e8
+  };
+
+  let buckling_fail = task3.get_erg();
 
   
 
