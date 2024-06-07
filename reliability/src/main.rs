@@ -220,6 +220,40 @@ impl Task2 {
   }
 }
 
+struct Task3 {
+  load_vec: Vec<f64>,
+  area: Vec<f64>,
+  length: Vec<f64>,
+  ftm: Vec<f64>,
+  youngs_modulus: Vec<f64>
+}
+
+struct Task3Buckling {
+  load_factor: f64,
+  youngs_modulus: f64,
+  ftm: f64,
+  length: f64,
+  buckling_length: f64
+}
+
+impl IntegrableFunction for Task3Buckling {
+  fn function_value(&self, x: f64) -> f64 {
+    
+    let mean = 410.0;
+    let std_dev = 70.0;
+
+    let beta = std_dev*6.0_f64.sqrt()/std::f64::consts::PI;
+    let mu = mean - beta*EULER_MASCHERONI;
+
+    let load = Gumbel::new(mu, beta);
+
+    let critical_load = self.youngs_modulus * self.ftm* std::f64::consts::PI.powi(2) / (self.length * self.buckling_length).powi(2);
+    let point = critical_load/self.load_factor;
+
+    return load.cdf
+  }
+}
+
 fn main() {
   let task1 = Task1 {
     load_vec: vec![
