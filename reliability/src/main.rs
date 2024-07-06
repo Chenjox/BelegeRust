@@ -1,413 +1,272 @@
-use std::{f64::consts::PI, fs::File};
+use std::ops::Mul;
 
-use compensated_summation::KahanBabuskaNeumaier;
-use compute::{distributions::{Continuous, Gumbel, Normal}, integrate::trapz};
-use faer::{mat, Mat};
+use compute::distributions::{Continuous, Gumbel, Normal};
+use faer::{Mat, Scale};
+use realiability::{LogNormal, EULER_MASCHERONI};
 
-const EULER_MASCHERONI: f64 = 0.577215664901532860606512090082402431042159335939923598805767234884867726777664670936947063291746749;
-// Lognormal Distribution
-struct LogNormal {
-  mean_nn: f64,
-  sigma_nn: f64,
-  lower_value: f64,
+mod realiability;
+
+
+
+fn system_matrix_1(l: f64, h: f64, wplast: f64) -> Mat<f64> {
+
+  let mut system_matrix = Mat::<f64>::zeros(3, 3);
+
+  system_matrix[(0,0)] = 5./3. * l;
+  system_matrix[(1,1)] = -h;
+  system_matrix[(2,2)] = -(1. + 7./3.)*wplast;
+
+  return system_matrix;
 }
 
-impl LogNormal {
-  fn new(mean: f64, sigma: f64, lower_bound: f64) -> Self {
-    let sigma_nn = (1.0 + (sigma / (mean - lower_bound)).powi(2)).ln().sqrt();
-    let mean_nn = (mean - lower_bound).ln() - sigma_nn.powi(2) / 2.0;
+fn system_matrix_12(l: f64, h: f64, wplast: f64) -> Mat<f64> {
 
-    Self {
-      mean_nn,
-      sigma_nn,
-      lower_value: lower_bound,
+  let mut system_matrix = Mat::<f64>::zeros(3, 3);
+
+  system_matrix[(0,0)] = -5./3. * l;
+  system_matrix[(1,1)] = h;
+  system_matrix[(2,2)] = -(1. + 7./3.)*wplast;
+
+  return system_matrix;
+}
+
+fn system_matrix_2(_l: f64, h: f64, wplast: f64) -> Mat<f64> {
+
+  let mut system_matrix = Mat::<f64>::zeros(3, 3);
+
+  system_matrix[(0,0)] = 0.0;
+  system_matrix[(1,1)] = h;
+  system_matrix[(2,2)] = -(5./3.)*wplast;
+
+  return system_matrix;
+}
+
+fn system_matrix_22(_l: f64, h: f64, wplast: f64) -> Mat<f64> {
+
+  let mut system_matrix = Mat::<f64>::zeros(3, 3);
+
+  system_matrix[(0,0)] = -0.0;
+  system_matrix[(1,1)] = -h;
+  system_matrix[(2,2)] = -(5./3.)*wplast;
+
+  return system_matrix;
+}
+
+fn get_system_matrix(l: f64, h: f64, wplast: f64, index: usize) -> Mat<f64> {
+  return match index {
+      0 => system_matrix_1(l, h, wplast),
+      1 => system_matrix_12(l, h, wplast),
+      2 => system_matrix_2(l, h, wplast),
+      3 => system_matrix_22(l, h, wplast),
+      _ => panic!()
+  };
+}
+
+fn dependency_1() -> (Mat<f64>,Mat<f64>) {
+  let mut dependency_matrix = Mat::<f64>::zeros(3, 2);
+  let mut affine_vector = Mat::<f64>::zeros(3,1);
+
+  dependency_matrix[(0,0)] = 6.;
+  dependency_matrix[(1,0)] = 2.;
+  dependency_matrix[(2,1)] = 1.;
+
+  affine_vector[(0,0)] = 40.;
+
+  return (dependency_matrix,affine_vector);
+}
+
+fn dependency_2() -> (Mat<f64>,Mat<f64>) {
+  let mut dependency_matrix = Mat::<f64>::zeros(3, 3);
+  let mut affine_vector = Mat::<f64>::zeros(3,1);
+
+  dependency_matrix[(0,0)] = 6.;
+  dependency_matrix[(1,1)] = 2.;
+  dependency_matrix[(2,2)] = 1.;
+
+  affine_vector[(0,0)] = 60.;
+
+  return (dependency_matrix,affine_vector);
+}
+
+fn dependency_3() -> (Mat<f64>,Mat<f64>) {
+  let mut dependency_matrix = Mat::<f64>::zeros(3, 2);
+  let mut affine_vector = Mat::<f64>::zeros(3,1);
+
+  dependency_matrix[(0,0)] = 13.;
+  dependency_matrix[(1,0)] = 6.;
+  dependency_matrix[(2,1)] = 1.;
+
+  affine_vector[(0,0)] = 40.;
+
+  return (dependency_matrix,affine_vector);
+}
+
+fn get_dependency_matrix(index: usize) -> (Mat<f64>,Mat<f64>) {
+  return match index {
+      0 => dependency_1(),
+      1 => dependency_2(),
+      2 => dependency_3(),
+      _ => panic!()
+  };
+}
+
+fn z_trafo_1() -> (Mat<f64>,Mat<f64>) {
+  let mut scaling_matrix = Mat::<f64>::zeros(2, 2);
+  let mut affine_vector = Mat::<f64>::zeros(2,1);
+
+  scaling_matrix[(0,0)] = 5.;
+  scaling_matrix[(1,1)] = 2.64e4;
+
+  affine_vector[(0,0)] = 30.;
+  affine_vector[(1,0)] = 28.8e4;
+
+  return (scaling_matrix,affine_vector);
+}
+
+fn z_trafo_2() -> (Mat<f64>,Mat<f64>) {
+  let mut scaling_matrix = Mat::<f64>::zeros(3, 3);
+  let mut affine_vector = Mat::<f64>::zeros(3,1);
+
+  scaling_matrix[(0,0)] = 5.;
+  scaling_matrix[(1,1)] = 5.;
+  scaling_matrix[(2,2)] = 2.64e4;
+
+  affine_vector[(0,0)] = 30.;
+  affine_vector[(1,0)] = 30.;
+  affine_vector[(2,0)] = 28.8e4;
+
+  return (scaling_matrix,affine_vector);
+}
+
+fn get_z_trafo_matrix(index: usize) -> (Mat<f64>,Mat<f64>) {
+  return match index {
+      0 => z_trafo_1(),
+      1 => z_trafo_2(),
+      _ => panic!()
+  };
+}
+
+fn task12() {
+  let l = 3.5;
+  let h = 4.0;
+  
+  let wplast = 1.628e-3;
+
+  //every constellation
+  for i in 0..2 {
+    let (dependency, affine_dependency) = get_dependency_matrix(i);
+    let (sigma, affine) = get_z_trafo_matrix(i);
+
+    // every failure plane
+    for j in 0..4 {
+      let system = get_system_matrix(l, h, wplast, j);
+      //println!("{:?}",dependency);
+
+      let linear_part = &system*&dependency*&sigma;
+      let affine_part = &system* &affine_dependency + &system*&dependency*&affine;
+      
+      let one_vector = Mat::<f64>::full(1, affine_part.nrows(), 1.0);
+      
+
+      let v = &one_vector*linear_part;
+      let u = &one_vector*affine_part;
+
+      let index = u.norm_l2()/v.norm_l2();
+
+      println!("Task {}: b_{} = {}",i+1,j+1,index);
     }
   }
-
-  fn cdf(&self, x: f64) -> f64 {
-    if x <= self.lower_value {
-      return 0.0;
-    }
-    let n = Normal::new(self.mean_nn, self.sigma_nn);
-
-    let trans_x = (x - self.lower_value).ln();
-
-    return n.cdf(trans_x);
-  }
 }
 
-fn double_exponential_transformation(c: f64, x: f64) -> [f64; 2] {
-  let trans_x = (c * (x).sinh()).sinh();
-  let trans_x_deriv = (c * (x).sinh()).cosh() * c * x.cosh();
 
-  return [trans_x, trans_x_deriv];
-}
-fn inverse_double_exponential_transformation(c: f64, x: f64) -> f64 {
-  (c * (x.asinh())).asinh()
+fn Gumbel_inverse_nataf_transformation(beta: f64, mu: f64, norm: &Normal, y: f64) -> f64 {
+  return mu - (-norm.cdf(y).ln()).ln()*beta;
 }
 
-trait IntegrableFunction {
-  fn function_value(&self, x: f64) -> f64;
-}
+fn task3() {
+  let l = 3.5;
+  let h = 4.0;
+  
+  let wplast = 1.628e-3;
 
-struct Task1Function {
-  load_mat: Mat<f64>,
-}
+  let (dependency, affine_dependency) = get_dependency_matrix(2);
 
-const simpson_weights: [f64; 3] = [1.0 / 6.0, 4.0 / 6.0, 1.0 / 6.0];
-const simpson_places: [f64; 3] = [0.0, 0.5, 1.0];
+  let mean = 25.0;
+  let std_dev = 5.0;
 
-fn integrate_function<T: IntegrableFunction>(
-  func: &T,
-  start_point: f64,
-  step_size: f64,
-  epsilon: f64,
-) -> Option<f64> {
-  // trapezoidal rule
+  let beta = std_dev*6.0_f64.sqrt()/std::f64::consts::PI;
+  let mu = mean - beta*EULER_MASCHERONI;
 
-  //transform the start point
-  let start = inverse_double_exponential_transformation(1.0, start_point);
-  let inkre = inverse_double_exponential_transformation(1.0, start_point+step_size);
-  let step_size = (inkre - start).abs();
-  //let start = double_exponential_transformation(1.0, start_point);
-  // check it's NaN ness
-  //if !start[0].is_finite() && !start[1].is_finite() {
-  //  println!("{},{}",start_point,start[0]);
-  //  return None;
-  //}
+  let load = Gumbel::new(mu, beta);
 
-  // get the first interval
-  let mut lower_val = start;
-  let mut upper_val = start + step_size;
+  let festigkeit = LogNormal::new(28.8e4, 2.64e4, 19.9e4);
 
-  let mut sum = KahanBabuskaNeumaier::new();
-  loop {
-    let mut small_sum = 0.0;
-    for i in 0..3 {
-      let x_val = double_exponential_transformation(1.0, lower_val + step_size * simpson_places[i]);
-      let func_val = step_size * func.function_value(x_val[0]) * x_val[1] * simpson_weights[i];
-      if !func_val.is_finite() {
-        break;
-      }
-      small_sum += func_val
-    }
-    if small_sum.abs() < epsilon {
-      break;
-    }
-    //println!("{},{},{}",small_sum,lower_val,upper_val);
-    sum += small_sum;
-    lower_val = upper_val;
-    upper_val += step_size;
-  }
-  // now everything behind
-  let mut lower_val = start - step_size;
-  let mut upper_val = start;
+  let normed_normal = Normal::default();
 
-  loop {
-    let mut small_sum = 0.0;
-    for i in 0..3 {
-      let x_val = double_exponential_transformation(1.0, upper_val - step_size * simpson_places[i]);
-      let func_val = step_size * func.function_value(x_val[0]) * x_val[1] * simpson_weights[i];
-      if !func_val.is_finite() {
-        break;
-      }
-      small_sum += func_val
-    }
-    if small_sum.abs() < epsilon {
-      break;
-    }
-    //println!("{},{},{}",small_sum,lower_val,upper_val);
-    sum += small_sum;
-    upper_val = lower_val;
-    lower_val -= step_size;
-  }
-
-  return Some(sum.total());
-}
-
-struct TestFun {}
-
-impl IntegrableFunction for TestFun {
-  fn function_value(&self, x: f64) -> f64 {
-    1.0 / (2.0 * std::f64::consts::PI).sqrt() * (-0.5 * x.powi(2)).exp()
-  }
-}
-
-struct Task1 {
-  load_vec: Vec<f64>,
-  area_vec: Vec<f64>,
-}
-
-impl IntegrableFunction for Task1 {
-  fn function_value(&self, x: f64) -> f64 {
-    let fy = LogNormal::new(30.2e4, 1.44e4, 19.9e4);
-
-    let mean = 410.0;
-    let std_dev = 70.0;
-
-    let beta = std_dev*6.0_f64.sqrt()/std::f64::consts::PI;
-    let mu = mean - beta*EULER_MASCHERONI;
-
-    let load = Gumbel::new(mu, beta);
-
-    let mut prod = 1.0;
-    for i in 0..self.load_vec.len() {
-      prod *= 1.0 - fy.cdf((self.load_vec[i] / self.area_vec[i]).abs() * x)
-    }
-
-    return prod * load.pdf(x);
-  }
-}
-
-impl Task1 {
-  fn erg(&self) -> Option<f64> {
-    return integrate_function(self, 410.0, 0.1, 1e-15).map(|f| 1.0 - f);
-  }
-}
-
-struct Task2 {
-  load_vec: Vec<f64>,
-  area_vec: Vec<f64>,
-  i: usize
-}
-
-impl IntegrableFunction for Task2 {
-  fn function_value(&self, x: f64) -> f64 {
-    let fy = LogNormal::new(30.2e4, 1.44e4, 19.9e4);
-
-    let mean = 410.0;
-    let std_dev = 70.0;
-
-    let beta = std_dev*6.0_f64.sqrt()/std::f64::consts::PI;
-    let mu = mean - beta*EULER_MASCHERONI;
-
-    let load = Gumbel::new(mu, beta);
-
-    return (1.0 - fy.cdf((self.load_vec[self.i] / self.area_vec[self.i]).abs() * x) )* load.pdf(x);
-  }
-}
-
-impl Task2 {
-  fn erg() -> f64 {
-    let mut res: f64 = 0.;
-    let mut k = 0;
-    for i in 0..10 {
-      let taks2 = Task2 { load_vec: vec![
-        0.0,
-        1.0,
-        0.0,
-        5.0 / 4.0,
-        -3.0 / 4.0,
-        -2.0_f64.sqrt(),
-        -1.0,
-        3.0 / 4.0,
-        0.0,
-        -7.0 / 4.0
-      ],
-      area_vec: vec![
-        3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 4.7e-3, 3.77e-3, 3.77e-3, 3.77e-3, 5.74e-3
-      ],
-      i};
-      if let Some( r) = integrate_function(&taks2, 410.0, 0.01, 1e-15).map(|f| 1.0 - f) {
-        if r > res {
-          res = r;
-          k = i;
-        }
-      };
-    }
-    println!("{}",k);
-    return res;
-  }
-}
-
-struct Task3 {
-  load_vec: Vec<f64>,
-  area: Vec<f64>,
-  length: Vec<f64>,
-  buckling_length: Vec<f64>,
-  ftm: Vec<f64>,
-  youngs_modulus: f64
-} 
-
-impl Task3 {
-  fn get_erg(&self) -> f64 {
-    let mean = 410.0;
-    let std_dev = 70.0;
-
-    let beta = std_dev*6.0_f64.sqrt()/std::f64::consts::PI;
-    let mu = mean - beta*EULER_MASCHERONI;
-
-    let load = Gumbel::new(mu, beta);
-
-    let mut max_prob_of_buckling_fail: f64 = 0.0;
-    for i in 0..self.load_vec.len() {
-      if self.load_vec[i] < 0.0 {
-        let buckling_prob = Task3Buckling {
-          load_distro: load,
-          load_factor: self.load_vec[i],
-          youngs_modulus: self.youngs_modulus,
-          ftm: self.ftm[i],
-          length: self.length[i],
-          buckling_length: self.buckling_length[i]
-        };
-
-
-        let critical_load = self.youngs_modulus * self.ftm[i] * std::f64::consts::PI.powi(2) / (self.length[i] * self.buckling_length[i]).powi(2);
-
-        let erg = integrate_function(&buckling_prob, critical_load+std_dev, std_dev*0.01, 1e-15).unwrap();
-
-        //println!("{},{}",i,erg);
-        max_prob_of_buckling_fail = max_prob_of_buckling_fail.max(erg);
-      }
-    }
-    //println!("{}",max_prob_of_buckling_fail);
-
-    return max_prob_of_buckling_fail;
-
-  }
-}
-
-struct Task3Buckling<T : Continuous<PDFType = f64>> {
-  load_distro: T,
-  load_factor: f64,
-  youngs_modulus: f64,
-  ftm: f64,
-  length: f64,
-  buckling_length: f64
-}
-
-impl<T: Continuous<PDFType = f64>> IntegrableFunction for Task3Buckling<T> {
-  fn function_value(&self, x: f64) -> f64 {
+  // every failure plane
+  for j in 0..4 {
+    let system = get_system_matrix(l, h, wplast, j);
     
-    let critical_load = self.youngs_modulus * self.ftm* std::f64::consts::PI.powi(2) / (self.length * self.buckling_length).powi(2);
-    let point = -critical_load/self.load_factor;
+    let linear_part = &system*&dependency;
+    let affine_part = &system* &affine_dependency;
+    //println!("{:?}",linear_part);
+    
+    let one_vector = Mat::<f64>::full(1, affine_part.nrows(), 1.0);
 
-    return if x < point { // Integrationsgrenzen für arme
-      0.0
-    } else {
-      self.load_distro.pdf(x)
+    let mut guess = Mat::<f64>::zeros(2, 1);
+    let mut delta : f64 = 0.0;
+    loop {
+        let last_guess = guess.clone();
+
+        let mut base_space = Mat::<f64>::zeros(2, 1);
+        base_space[(0,0)] = Gumbel_inverse_nataf_transformation(beta, mu, &normed_normal, guess[(0,0)]);
+        base_space[(1,0)] = festigkeit.inverse_nataf_transformation(guess[(1,0)]);
+
+        if base_space.norm_l2().is_infinite() {
+          println!("Base Space was not finite!");
+          break;
+        }
+
+        let failure_function = &one_vector*&linear_part*&base_space + &one_vector*&affine_part;
+
+        //println!("{:?}",failure_function);
+
+        let mut prob_gradient = Mat::<f64>::zeros(2, 2);
+        prob_gradient[(0,0)] = normed_normal.pdf(guess[(0,0)])/load.pdf(base_space[(0,0)]);
+        prob_gradient[(1,1)] = festigkeit.inverse_nataf_transformation_dx(guess[(1,0)]);
+
+        //println!("{:?}",prob_gradient);
+
+        prob_gradient = &one_vector*&linear_part*prob_gradient;
+        
+        //println!("{:?}",prob_gradient);
+
+        let gradient_normalizer = 1.0/prob_gradient.norm_l2();
+        // now its alpha
+        prob_gradient *= Scale(-gradient_normalizer);
+
+        //println!("{:?},{:?},{:?},{:?}",failure_function,prob_gradient,guess,base_space);
+        // delta
+        delta = (failure_function * Scale(gradient_normalizer) + (&prob_gradient*guess).transpose()).norm_l2();
+
+        guess = prob_gradient.transpose() * Scale(delta);
+        //println!("{:?}",guess);
+        if (last_guess - guess.clone()).norm_l2() < 1e-10 {
+          break;
+        }
     }
+    
+
+    println!("Task {}: b_{} = {}",3,j+1,delta);
   }
 }
+
 
 fn main() {
-  let task1 = Task1 {
-    load_vec: vec![
-      0.0,
-      1.0,
-      0.0,
-      5.0 / 4.0,
-      -3.0 / 4.0,
-      -2.0_f64.sqrt(),
-      -1.0,
-      3.0 / 4.0,
-      0.0,
-      -7.0 / 4.0
-    ],
-    area_vec: vec![
-      3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 4.7e-3, 3.77e-3, 3.77e-3, 3.77e-3, 5.74e-3
-    ],
-  };
+  task12();
+  task3()
 
 
-  //task1.test1();
-  let mut task1_failure = 0.0;
-  if let Some(erg) = task1.erg() {
-    task1_failure = erg;
-  }
-  let task1_failure = task1_failure;
-  println!("Task 1: ");
-  println!("{}", task1_failure);
-
-  println!("Task 2: ");
-  let task2_failure = Task2::erg();
-  println!("{}", task2_failure);
-
-  println!("Task 3.I: ");
-  let task3 = Task3 {
-    load_vec: vec![
-      0.0,
-      1.0,
-      0.0,
-      5.0 / 4.0,
-      -3.0 / 4.0,
-      -2.0_f64.sqrt(),
-      -1.0,
-      3.0 / 4.0,
-      0.0,
-      -7.0 / 4.0
-    ],
-    area: vec![
-      3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 4.7e-3, 3.77e-3, 3.77e-3, 3.77e-3, 5.74e-3
-    ],
-    length: vec![
-      5.6, 4.2, 4.2, 7.0, 4.2, 35.28_f64.sqrt(), 5.6, 4.2, 7.0, 4.2
-    ],
-    buckling_length: vec![
-      1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
-    ],
-    ftm: vec![
-      1.46e-5,1.46e-5,1.46e-5,1.46e-5,1.46e-5,1.78e-5,1.46e-5,1.46e-5,1.46e-5,2.10e-5
-    ],
-    youngs_modulus: 2.1e8
-  };
-
-  let buckling_fail = task3.get_erg();
-
-  let lower_fail = buckling_fail.max(task1_failure);
-  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task1_failure);
-
-  println!("a) {} < P_f < {}",lower_fail,upper_fail);
-
-  let lower_fail = buckling_fail.max(task2_failure);
-  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task2_failure);
-
-  println!("b) {} < P_f < {}",lower_fail,upper_fail);
-
-  println!("Task 3.II: ");
-  let task3 = Task3 {
-    load_vec: vec![
-      0.0,
-      1.0,
-      0.0,
-      5.0 / 4.0,
-      -3.0 / 4.0,
-      -2.0_f64.sqrt(),
-      -1.0,
-      3.0 / 4.0,
-      0.0,
-      -7.0 / 4.0
-    ],
-    area: vec![
-      3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 4.7e-3, 3.77e-3, 3.77e-3, 3.77e-3, 5.74e-3
-    ],
-    length: vec![
-      5.6, 4.2, 4.2, 7.0, 4.2, 35.28_f64.sqrt(), 5.6, 4.2, 7.0, 4.2
-    ],
-    buckling_length: vec![
-      1.0, 1.0, 1.0, 1.0/2.0, 1.0, 1.0/2.0, 1.0, 1.0, 1.0, 1.0/2.0
-    ],
-    ftm: vec![
-      1.46e-5, 1.46e-5, 1.46e-5, 1.46e-5, 1.46e-5, 1.78e-5, 1.46e-5, 1.46e-5, 1.46e-5, 2.10e-5
-    ],
-    youngs_modulus: 2.1e8
-  };
-
-  let buckling_fail = task3.get_erg();
-
-  let lower_fail = buckling_fail.max(task1_failure);
-  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task1_failure);
-
-  println!("a) {} < P_f < {}",lower_fail,upper_fail);
-
-  let lower_fail = buckling_fail.max(task2_failure);
-  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task2_failure);
-
-  println!("b) {} < P_f < {}",lower_fail,upper_fail);
-
-  
-
-  
 
   //println!("{}",load.pdf(60.0));
   //println!("{}",fy.cdf(50.0e4));
