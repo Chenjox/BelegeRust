@@ -256,11 +256,11 @@ impl Task3 {
 
         let erg = integrate_function(&buckling_prob, critical_load+std_dev, std_dev*0.01, 1e-15).unwrap();
 
-        println!("{},{}",i,erg);
+        //println!("{},{}",i,erg);
         max_prob_of_buckling_fail = max_prob_of_buckling_fail.max(erg);
       }
     }
-    println!("{}",max_prob_of_buckling_fail);
+    //println!("{}",max_prob_of_buckling_fail);
 
     return max_prob_of_buckling_fail;
 
@@ -323,7 +323,7 @@ fn main() {
   let task2_failure = Task2::erg();
   println!("{}", task2_failure);
 
-  println!("Task 3: ");
+  println!("Task 3.I: ");
   let task3 = Task3 {
     load_vec: vec![
       0.0,
@@ -353,6 +353,59 @@ fn main() {
   };
 
   let buckling_fail = task3.get_erg();
+
+  let lower_fail = buckling_fail.max(task1_failure);
+  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task1_failure);
+
+  println!("a) {} < P_f < {}",lower_fail,upper_fail);
+
+  let lower_fail = buckling_fail.max(task2_failure);
+  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task2_failure);
+
+  println!("b) {} < P_f < {}",lower_fail,upper_fail);
+
+  println!("Task 3.II: ");
+  let task3 = Task3 {
+    load_vec: vec![
+      0.0,
+      1.0,
+      0.0,
+      5.0 / 4.0,
+      -3.0 / 4.0,
+      -2.0_f64.sqrt(),
+      -1.0,
+      3.0 / 4.0,
+      0.0,
+      -7.0 / 4.0
+    ],
+    area: vec![
+      3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 3.77e-3, 4.7e-3, 3.77e-3, 3.77e-3, 3.77e-3, 5.74e-3
+    ],
+    length: vec![
+      5.6, 4.2, 4.2, 7.0, 4.2, 35.28_f64.sqrt(), 5.6, 4.2, 7.0, 4.2
+    ],
+    buckling_length: vec![
+      1.0, 1.0, 1.0, 1.0/2.0, 1.0, 1.0/2.0, 1.0, 1.0, 1.0, 1.0/2.0
+    ],
+    ftm: vec![
+      1.46e-5, 1.46e-5, 1.46e-5, 1.46e-5, 1.46e-5, 1.78e-5, 1.46e-5, 1.46e-5, 1.46e-5, 2.10e-5
+    ],
+    youngs_modulus: 2.1e8
+  };
+
+  let buckling_fail = task3.get_erg();
+
+  let lower_fail = buckling_fail.max(task1_failure);
+  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task1_failure);
+
+  println!("a) {} < P_f < {}",lower_fail,upper_fail);
+
+  let lower_fail = buckling_fail.max(task2_failure);
+  let upper_fail = 1.0 - (1.0 - buckling_fail)*(1.0 - task2_failure);
+
+  println!("b) {} < P_f < {}",lower_fail,upper_fail);
+
+  
 
   
 
